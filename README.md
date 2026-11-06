@@ -328,12 +328,13 @@ cd web && npm run build
 
 ### 独立程序发布
 
-同一工作流同时构建内嵌前端的 Linux amd64、arm64 程序。每次构建可在 Actions
-运行页面的 `airy-linux-programs` 下载产物，保留 30 天。推送 `v*` 版本标签时，
-镜像和程序构建全部成功后会自动创建 GitHub Release，附带：
+同一工作流同时构建内嵌前端的 Linux amd64、arm64 和 Windows amd64 程序。每次构建可在 Actions
+运行页面的 `airy-programs` 下载产物，保留 30 天。推送 `v*` 版本标签时，
+程序构建和测试成功后会自动创建 GitHub Release（不受 GHCR 镜像推送失败影响），附带：
 
 - `airy-linux-amd64.tar.gz`
 - `airy-linux-arm64.tar.gz`
+- `airy-windows-amd64.zip`（含 `start.bat`）
 - `SHA256SUMS` 校验文件
 
 带连字符的版本标签（例如 `v1.2.3-beta.1`）标记为预发布。重跑版本构建会更新同名附件。
@@ -342,3 +343,7 @@ cd web && npm run build
 解压适合 CPU 架构的包，按需将 `env.example` 复制为 `.env` 并填写数据库配置，
 运行 `./airy`。独立程序已包含网页，但宿主机需自行安装 `ffmpeg/ffprobe`，或在
 配置中指定工具路径；它们不包含在程序压缩包中。
+
+Windows 用户解压 ZIP 后双击 `start.bat`，访问 `http://localhost:8096`。未设置数据库
+配置时默认使用程序目录中的 SQLite 数据库。Windows 需要配置对应的 `ffmpeg.exe`
+和 `ffprobe.exe`，可通过 `.env` 指定其绝对路径。
