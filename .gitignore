@@ -1,0 +1,28 @@
+# Go
+/bin/
+/tools/
+/coverage.out
+/*.db
+/*.db-shm
+/*.db-wal
+
+# Vue / Node.js
+web/node_modules/
+web/dist/
+web/.vite/
+/cmd/server/web/
+
+# Local configuration
+.env
+.env.local
+.env.compose
+*.local
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+
+# Local UI captures may contain private gallery media
+/docs/screenshots/
+

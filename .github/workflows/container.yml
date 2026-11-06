@@ -1,0 +1,167 @@
+name: Build Docker image and programs
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  docker:
+    name: Build and publish multi-platform image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Generate image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=airy-container
+          cache-to: type=gha,mode=max,scope=airy-container
+
+  binaries:
+    name: Build standalone Linux programs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build embedded frontend
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build -- --outDir ../cmd/server/web --emptyOutDir
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: true
+      - name: Test server
+        run: go test ./...
+      - name: Package programs
+        shell: bash
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+        run: |
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            package="airy-linux-${arch}"
+            mkdir -p "dist/${package}"
+            GOARCH="$arch" go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o "dist/${package}/airy" ./cmd/server
+            cp README.md "dist/${package}/README.md"
+            cp .env.example "dist/${package}/env.example"
+            tar -czf "dist/${package}.tar.gz" -C dist "$package"
+          done
+          cd dist
+          sha256sum airy-linux-*.tar.gz > SHA256SUMS
+      - name: Upload downloadable programs
+        uses: actions/upload-artifact@v7
+        with:
+          name: airy-linux-programs
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  release:
+    name: Publish programs to GitHub Release
+    needs: [docker, binaries]
+    if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download program packages
+        uses: actions/download-artifact@v8
+        with:
+          name: airy-linux-programs
+          path: dist
+      - name: Publish release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          sha256sum --check SHA256SUMS
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" ./*.tar.gz SHA256SUMS --clobber
+          else
+            flags=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" ./*.tar.gz SHA256SUMS \
+              --verify-tag --generate-notes --title "$RELEASE_TAG" "${flags[@]}"
+          fi
