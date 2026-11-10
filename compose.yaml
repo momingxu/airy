@@ -1,0 +1,47 @@
+name: airy
+
+services:
+  airy:
+    image: ghcr.io/momingxu/airy:latest
+    container_name: airy
+    restart: unless-stopped
+    init: true
+    user: "1000:1001"
+    environment:
+      PORT: "8096"
+      IS_DOCKER: "true"
+      GIN_MODE: release
+      TZ: Asia/Shanghai
+
+      # Existing PostgreSQL server outside this Compose project.
+      DB_DRIVER: postgres
+      DB_HOST: 192.168.50.5
+      DB_PORT: "5436"
+      DB_USER: postgres
+      DB_PASSWORD: ${AIRY_POSTGRES_PASSWORD:?请在 .env.compose 中设置 AIRY_POSTGRES_PASSWORD}
+      DB_NAME: airy1
+      DB_SSLMODE: disable
+      TLS_CERT_FILE: /certs/server.crt
+      TLS_KEY_FILE: /certs/server.key
+    ports:
+      - "0.0.0.0:8096:8096"
+    volumes:
+      - type: bind
+        source: /vol1/1000/docker/airy/certs
+        target: /certs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /vol4/1000/写真/Beautyleg
+        target: /mnt/Beautyleg
+        bind:
+          create_host_path: false
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

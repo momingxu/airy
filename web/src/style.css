@@ -679,3 +679,8 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
   .people-list-toolbar { grid-template-columns: 1fr; gap: 10px; }
   .entity-favorite-filter { justify-self: start; }
 }
+
+/* Empty library pages show one centered prompt without redundant headings/tools. */
+.content.content-empty { display: flex; flex-direction: column; padding-top: 24px; padding-bottom: 24px; }
+.content-empty > .view-stage { display: flex; flex: 1; align-items: center; width: 100%; }
+.content-empty .empty-state { width: 100%; min-height: 0; padding: 24px 12px; }

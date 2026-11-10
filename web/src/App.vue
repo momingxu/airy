@@ -332,6 +332,22 @@ const visibleGroups = computed(() => {
   }
   return []
 })
+// Keep search/filter controls available when only the filtered results are empty.
+const showOnlyEmptyState = computed(() => {
+  if (activeView.value === 'people') {
+    return !selectedPersonID.value && !peopleLoading.value && !personError.value && people.value.length === 0
+  }
+  if (activeView.value === 'series') {
+    return !selectedSeriesID.value && !seriesLoading.value && !seriesError.value && series.value.length === 0
+  }
+  if (activeView.value === 'photos') {
+    return !galleryLoading.value && !galleryError.value && groups.value.length === 0
+  }
+  if (activeView.value === 'favorites') {
+    return !favoriteGalleryLoading.value && !favoriteGalleryError.value && visibleGroups.value.length === 0
+  }
+  return false
+})
 const summary = computed(() => {
   if (activeView.value === 'photos') {
     const totals = `${totalAlbumCount.value} 个相簿 · ${totalMediaCount.value} 个项目`
@@ -2536,8 +2552,8 @@ onBeforeUnmount(() => {
       </div>
     </aside>
 
-    <main ref="content" class="content" @scroll.passive="maybeLoadMore">
-      <header class="page-header">
+    <main ref="content" class="content" :class="{ 'content-empty': showOnlyEmptyState }" @scroll.passive="maybeLoadMore">
+      <header v-if="!showOnlyEmptyState" class="page-header">
         <Transition name="header-copy" mode="out-in">
           <div :key="activeView">
             <p class="eyebrow">{{ currentMeta.eyebrow }}</p>
@@ -2896,7 +2912,7 @@ onBeforeUnmount(() => {
 
       <section v-else-if="activeView === 'people'" class="people-view">
         <template v-if="!selectedPerson">
-          <div class="people-manager people-list-toolbar">
+          <div v-if="!showOnlyEmptyState" class="people-manager people-list-toolbar">
             <button class="entity-favorite-filter" :class="{ active: peopleFavoritesOnly }"
               type="button" :aria-pressed="peopleFavoritesOnly" @click="peopleFavoritesOnly = !peopleFavoritesOnly">
               <MdIcon :name="peopleFavoritesOnly ? 'favorite' : 'favoriteBorder'" />
@@ -3227,7 +3243,7 @@ onBeforeUnmount(() => {
 
       <section v-else-if="activeView === 'series'" class="people-view series-view">
         <template v-if="!selectedSeries">
-          <div class="people-manager people-list-toolbar">
+          <div v-if="!showOnlyEmptyState" class="people-manager people-list-toolbar">
             <button class="entity-favorite-filter" :class="{ active: seriesFavoritesOnly }"
               type="button" :aria-pressed="seriesFavoritesOnly" @click="seriesFavoritesOnly = !seriesFavoritesOnly">
               <MdIcon :name="seriesFavoritesOnly ? 'favorite' : 'favoriteBorder'" />

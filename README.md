@@ -247,14 +247,31 @@ go build -trimpath -o bin/airy ./cmd/server
 内嵌到 Go 程序，最终层仅包含单个 Airy 可执行文件、CA 证书、时区数据以及扫描媒体
 所需的 `ffmpeg/ffprobe`。
 
-仓库提供可直接使用的
-[`compose.yaml`](compose.yaml) 和 [`.env.compose.example`](.env.compose.example)。
+仓库提供 [`compose.yaml`](compose.yaml)，当前配置使用外部 PostgreSQL 和 HTTPS，
+以 UID/GID `1000:1001` 运行。部署前按实际环境修改数据库地址、数据库名、端口映射、
+证书目录和照片目录，并创建被 Git 忽略的 `.env.compose`：
 
-快速启动 PostgreSQL 版本：
+```dotenv
+AIRY_POSTGRES_PASSWORD=填写实际数据库密码
+```
 
 ```bash
-cp .env.compose.example .env.compose
-# 编辑 .env.compose，至少设置 AIRY_MEDIA_PATH 和 AIRY_POSTGRES_PASSWORD
+docker compose --env-file .env.compose pull
+docker compose --env-file .env.compose up -d
+```
+
+访问 `https://服务器IP:8096`，首次访问创建管理员账户。证书目录需包含
+`server.crt` 和 `server.key`，且证书必须适用于访问地址。挂载目录必须预先存在，
+运行用户需能读取证书、原图，并在相册目录创建缩略图。
+数据库保存在外部 PostgreSQL，Compose 不创建数据库服务或 SQLite 数据卷。
+
+如果宿主机已有服务占用 8096，请修改 `ports` 的宿主机端口。多个资源库可通过增加
+指向 `/mnt/<资源库名称>` 的挂载实现。开发环境 `.env` 不会注入容器。
+
+```bash
+# 查看日志
+docker compose --env-file .env.compose logs -f airy
+# 更新镜像与容器
 docker compose --env-file .env.compose pull
 docker compose --env-file .env.compose up -d
 ```
