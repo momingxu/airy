@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import FavoriteIcon from "./components/FavoriteIcon.vue"
+import AlbumCsvActions from "./components/AlbumCsvActions.vue"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MdIcon from './components/MdIcon.vue'
 import {
@@ -1872,7 +1873,7 @@ function handleLightboxTouchStart(event: TouchEvent) {
 function handleLightboxTouchEnd(event: TouchEvent) {
   const start = lightboxTouchStart
   lightboxTouchStart = null
-  if (!start || event.changedTouches.length !== 1 || previewPhotos.value.length < 2) return
+  if (!start || event.changedTouches.length !== 1) return
 
   const touch = event.changedTouches[0]
   const deltaX = touch.clientX - start.x
@@ -1880,11 +1881,12 @@ function handleLightboxTouchEnd(event: TouchEvent) {
   const horizontalDistance = Math.abs(deltaX)
   const verticalDistance = Math.abs(deltaY)
   const dismissThreshold = Math.max(72, Math.min(140, window.innerHeight * 0.14))
-  if (deltaY > 0 && verticalDistance >= dismissThreshold && verticalDistance > horizontalDistance * 1.25) {
+  if (verticalDistance >= dismissThreshold && verticalDistance > horizontalDistance * 1.25) {
     closeLightbox()
     return
   }
 
+  if (previewPhotos.value.length < 2) return
   const threshold = Math.max(48, Math.min(96, window.innerWidth * 0.12))
   if (horizontalDistance < threshold || horizontalDistance <= verticalDistance * 1.25) return
 
@@ -2789,6 +2791,14 @@ onBeforeUnmount(() => {
 
         <p v-if="directoryError" class="inline-error folder-error" role="alert">{{ directoryError }}</p>
 
+        <div class="folder-manager-toolbar">
+          <div class="global-scan-copy">
+            <b>全局相册 CSV</b>
+            <span>导出全部资源库的相册，编辑后按 ID 批量导入。</span>
+          </div>
+          <AlbumCsvActions @applied="loadDirectories(true)" />
+        </div>
+
         <div v-if="directories.length" class="folder-manager-toolbar">
           <div class="global-scan-copy">
             <b>全局图库扫描</b>
@@ -3081,7 +3091,7 @@ onBeforeUnmount(() => {
             >
               <button class="person-card-open" type="button" @click="openPerson(person.id)">
                 <span class="person-avatar" aria-hidden="true">
-                  <img v-if="person.avatar_url" :src="person.avatar_url" alt="" loading="lazy" decoding="async" fetchpriority="low" />
+                  <img v-if="person.avatar_url" :src="person.avatar_url" alt="" loading="lazy" fetchpriority="low" />
                   <span v-else>{{ person.name.slice(0, 1).toUpperCase() }}</span>
                 </span>
                 <span class="person-card-copy">
@@ -3366,7 +3376,7 @@ onBeforeUnmount(() => {
             <article v-for="item in visibleSeries" :key="item.id" :class="['person-card', 'series-card', { favorite: item.favorite }]">
               <button class="person-card-open" type="button" @click="openSeries(item.id)">
                 <span class="person-avatar series-cover" aria-hidden="true">
-                  <img v-if="item.cover_url" :src="item.cover_url" alt="" loading="lazy" decoding="async" fetchpriority="low" />
+                  <img v-if="item.cover_url" :src="item.cover_url" alt="" loading="lazy" fetchpriority="low" />
                   <span v-else>{{ item.name.slice(0, 1).toUpperCase() }}</span>
                 </span>
                 <span class="person-card-copy"><b>{{ item.name }}</b><small>{{ item.album_count }} 个相册</small></span>
@@ -3645,7 +3655,7 @@ onBeforeUnmount(() => {
             @click="associateAlbumPerson(person)"
           >
             <span class="person-avatar" aria-hidden="true">
-              <img v-if="person.avatar_url" :src="person.avatar_url" alt="" loading="lazy" decoding="async" fetchpriority="low" />
+              <img v-if="person.avatar_url" :src="person.avatar_url" alt="" loading="lazy" fetchpriority="low" />
               <span v-else>{{ person.name.slice(0, 1).toUpperCase() }}</span>
             </span>
             <span>

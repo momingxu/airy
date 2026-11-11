@@ -74,19 +74,37 @@ function buildPhotoRows(group: PhotoGroup, width: number, mobile: boolean): Phot
 
   const gap = mobile ? 3 : 5
   if (mobile) {
-    const columns = 3
-    const cellSize = Math.max(1, (width - gap * (columns - 1)) / columns)
-    for (let index = 0; index < group.photos.length; index += columns) {
-      const photos = group.photos.slice(index, index + columns)
+    const pending = [...group.photos]
+    const isPortrait = (photo: Photo) => photo.aspectRatio > 0 && photo.aspectRatio < 1
+    for (let index = 0; pending.length;) {
+      // Anchor each row to the earliest photo, with swaps limited to the next five.
+      const nearby = pending.slice(0, 5)
+      const portraitPositions = nearby.flatMap((photo, position) => isPortrait(photo) ? [position] : [])
+      let selected: number[]
+      if (isPortrait(pending[0]) && portraitPositions.length >= 3) {
+        selected = portraitPositions.slice(0, 3)
+      } else {
+        // Prefer two landscapes (squares included), or one portrait + one landscape.
+        const partner = nearby.findIndex((photo, position) => position > 0 && !isPortrait(photo))
+        selected = pending.length === 1 ? [0] : [0, partner > 0 ? partner : 1]
+      }
+      const photos = selected.map((position) => pending[position])
+      const columns = photos.length === 3 || (pending.length < 3 && photos.every(isPortrait)) ? 3 : 2
+      for (const position of [...selected].reverse()) pending.splice(position, 1)
+      const ratios = photos.map((photo) => Number.isFinite(photo.aspectRatio) && photo.aspectRatio > 0 ? photo.aspectRatio : 1)
+      const ratioSum = ratios.reduce((sum, ratio) => sum + ratio, 0)
+      // Reserve missing slots so an incomplete last row does not stretch across the screen.
+      const height = Math.max(1, (width - gap * (columns - 1)) / (ratioSum * columns / photos.length))
       rows.push({
         key: `${group.id}-row-${index}`,
         kind: 'photos',
-        size: cellSize + gap,
-        height: cellSize,
+        size: height + gap,
+        height,
         photos,
-        widths: photos.map(() => cellSize),
+        widths: ratios.map((ratio) => ratio * height),
         group,
       })
+      index += photos.length
     }
     return rows
   }
@@ -354,8 +372,6 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
               class="photo-image"
               :src="photo.thumbnail"
               :alt="photo.name"
-              loading="eager"
-              decoding="async"
               @load="markImageLoaded"
             />
             <span class="photo-caption">{{ photo.name.replace('.jpg', '') }}</span>

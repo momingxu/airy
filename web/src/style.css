@@ -429,7 +429,7 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .settings-saving { margin-left: auto; }
 .folder-scan-error { margin: 9px 0 0; color: #a64b4b; font-size: 11px; }
 .scan-stage-copy { margin: 10px 0 -5px; color: var(--accent-strong); font-size: 10px; font-weight: 650; }
-.folder-actions { display: flex; gap: 8px; align-items: center; }
+.folder-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .scan-button, .remove-folder-button { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); background: var(--surface); border: 1px solid var(--line); cursor: pointer; transition: color .2s var(--ease), background .2s var(--ease), border-color .2s var(--ease); }
 .scan-button { gap: 7px; min-width: 86px; padding: 9px 13px; border-radius: 12px; font-size: 12px; font-weight: 700; }
 .scan-button svg { width: 17px; }

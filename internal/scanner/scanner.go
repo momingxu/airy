@@ -397,25 +397,32 @@ func (s *Scanner) scan(ctx context.Context, requestedRoot string, progress func(
 
 	albums := make([]database.Album, 0, len(albumPaths))
 	albumIDs := make([]uint, 0, len(albumPaths))
+	newAlbumIDs := make(map[uint]bool)
 	for _, albumPath := range albumPaths {
 		if err := ctx.Err(); err != nil {
 			return stats, err
 		}
 		albumName := filepath.Base(albumPath)
 		album := database.Album{}
-		if err := s.db.WithContext(ctx).
+		result := s.db.WithContext(ctx).
 			Where("album_path = ?", albumPath).
-			Attrs(database.Album{PublishedDate: database.AlbumPublicationDate(albumName, startedAt)}).
-			Assign(database.Album{
-				DirectoryID: directory.ID,
-				AlbumName:   albumName,
-			}).
-			FirstOrCreate(&album, database.Album{
-				DirectoryID: directory.ID,
-				AlbumName:   albumName,
-				AlbumPath:   albumPath,
+			Attrs(database.Album{
+				PublishedDate: database.AlbumPublicationDate(albumName, startedAt),
+				DirectoryID:   directory.ID,
+				AlbumName:     albumName,
+				AlbumPath:     albumPath,
+			}).FirstOrCreate(&album)
+		if result.Error != nil {
+			return stats, fmt.Errorf("save album %q: %w", albumName, result.Error)
+		}
+		newAlbumIDs[album.ID] = result.RowsAffected > 0 || album.PublishedDate == ""
+		// Existing titles may have been edited through CSV; keep them on rescan.
+		if album.DirectoryID != directory.ID {
+			if err := s.db.WithContext(ctx).Model(&album).Updates(map[string]any{
+				"directory_id": directory.ID,
 			}).Error; err != nil {
-			return stats, fmt.Errorf("save album %q: %w", albumName, err)
+				return stats, fmt.Errorf("update album %q: %w", albumName, err)
+			}
 		}
 		albums = append(albums, album)
 		albumIDs = append(albumIDs, album.ID)
@@ -470,6 +477,17 @@ func (s *Scanner) scan(ctx context.Context, requestedRoot string, progress func(
 		albumStats, err := s.scanAlbumMedia(ctx, album, startedAt)
 		if err != nil {
 			return stats, fmt.Errorf("scan album %q: %w", album.AlbumName, err)
+		}
+		if newAlbumIDs[album.ID] {
+			date, err := database.ResolveAlbumPublicationDate(s.db.WithContext(ctx), album, startedAt)
+			if err != nil {
+				return stats, fmt.Errorf("resolve album publication date: %w", err)
+			}
+			if err := s.db.WithContext(ctx).Model(&database.Album{}).
+				Where("id = ? AND album_name = ? AND published_date = ?", album.ID, album.AlbumName, album.PublishedDate).
+				UpdateColumn("published_date", date).Error; err != nil {
+				return stats, fmt.Errorf("save album publication date: %w", err)
+			}
 		}
 		stats.Files += albumStats.Files
 		stats.Images += albumStats.Images
