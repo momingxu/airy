@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LightboxSlides from './components/LightboxSlides.vue'
 import FavoriteIcon from "./components/FavoriteIcon.vue"
 import AlbumCsvActions from "./components/AlbumCsvActions.vue"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -111,6 +112,11 @@ const confirmationLabel = ref('确定')
 const gallerySearchInputElement = ref<HTMLInputElement | null>(null)
 const previewPhotos = ref<Photo[]>([])
 const previewIndex = ref(0)
+const lightboxSlides = ref<InstanceType<typeof LightboxSlides> | null>(null)
+const lightboxLoadingPhotoID = ref<string | null>(null)
+let lightboxSwitchPending = false
+let queuedLightboxDirection = 0
+let lightboxSwitchGeneration = 0
 const slideshowPlaying = ref(false)
 const slideshowProgressKey = ref(0)
 const theme = ref<'light' | 'dark'>('light')
@@ -226,14 +232,11 @@ const newSeriesSelectedAlbumIDs = ref<Set<number>>(new Set())
 const newSeriesAlbumSearchLoading = ref(false)
 let directoryRefreshTimer: number | undefined
 let slideshowTimer: number | undefined
-let lightboxTouchResetTimer: number | undefined
 let newPersonSearchTimer: number | undefined
 let newSeriesSearchTimer: number | undefined
 let wheelLastSwitchAt = Number.NEGATIVE_INFINITY
 let modifierShortcutChorded = false
-let lightboxTouchStart: { x: number; y: number } | null = null
 let confirmationResolver: ((confirmed: boolean) => void) | null = null
-let suppressLightboxBackdropClick = false
 let galleryLoadVersion = 0
 const preloadedLightboxImages = new Map<string, HTMLImageElement>()
 
@@ -1736,6 +1739,7 @@ function openPhoto(photo: Photo, group: PhotoGroup) {
   const completeGroup = visibleGroups.value.find((item) => item.id === group.id) ?? group
   previewPhotos.value = completeGroup.photos
   previewIndex.value = Math.max(0, completeGroup.photos.findIndex((item) => item.id === photo.id))
+  lightboxLoadingPhotoID.value = photo.mediaType === 'image' ? photo.id : null
   slideshowPlaying.value = false
   lightbox.value?.showModal()
 }
@@ -1753,6 +1757,11 @@ function preloadUpcomingPhotos() {
   }
 
   const wanted = new Map<string, Photo>()
+  // Keep the displayed image alive and include the previous slide as well.
+  for (const offset of [0, -1]) {
+    const photo = photos[(previewIndex.value + offset + photos.length) % photos.length]
+    if (photo.mediaType === 'image') wanted.set(photo.id, photo)
+  }
   const preloadCount = Math.min(lightboxPreloadCount, photos.length - 1)
   for (let offset = 1; offset <= preloadCount; offset += 1) {
     const photo = photos[(previewIndex.value + offset) % photos.length]
@@ -1782,14 +1791,17 @@ function preloadUpcomingPhotos() {
   }
 }
 
-function markLightboxImageLoaded(event: Event) {
+async function markLightboxImageLoaded(event: Event) {
   const image = event.currentTarget as HTMLImageElement
+  try { await image.decode() } catch { /* The load event can precede decoding. */ }
   image.classList.add('loaded')
+  if (lightboxLoadingPhotoID.value === image.dataset.photoId) lightboxLoadingPhotoID.value = null
 }
 
 function markLightboxImageFailed(event: Event) {
   const image = event.currentTarget as HTMLImageElement
   image.classList.remove('loaded')
+  if (lightboxLoadingPhotoID.value === image.dataset.photoId) lightboxLoadingPhotoID.value = null
 }
 
 function closeLightbox() {
@@ -1798,21 +1810,61 @@ function closeLightbox() {
 }
 
 function handleLightboxClose() {
+  lightboxLoadingPhotoID.value = null
+  lightboxSwitchGeneration += 1
+  lightboxSwitchPending = false
+  queuedLightboxDirection = 0
   slideshowPlaying.value = false
   window.clearTimeout(slideshowTimer)
-  window.clearTimeout(lightboxTouchResetTimer)
   wheelLastSwitchAt = Number.NEGATIVE_INFINITY
-  lightboxTouchStart = null
-  suppressLightboxBackdropClick = false
   clearLightboxPreloads()
   previewPhotos.value = []
   previewIndex.value = 0
 }
 
-function stepPhoto(direction: number) {
-  if (!previewPhotos.value.length) return
-  previewIndex.value =
-    (previewIndex.value + direction + previewPhotos.value.length) % previewPhotos.value.length
+async function stepPhoto(direction: number) {
+  if (previewPhotos.value.length < 2 || !lightbox.value?.open) return
+  const step = direction > 0 ? 1 : -1
+  if (lightboxSwitchPending) {
+    // Coalesce repeated input instead of mounting several moving full-size images.
+    queuedLightboxDirection = step
+    return
+  }
+  lightboxSwitchPending = true
+  const generation = ++lightboxSwitchGeneration
+  const nextIndex = (previewIndex.value + step + previewPhotos.value.length) % previewPhotos.value.length
+  const photo = previewPhotos.value[nextIndex]
+  if (photo.mediaType === 'image') {
+    lightboxLoadingPhotoID.value = photo.id
+    let image = preloadedLightboxImages.get(photo.id)
+    if (!image) {
+      image = new Image()
+      image.decoding = 'async'
+      image.src = photo.original
+      preloadedLightboxImages.set(photo.id, image)
+    }
+    image.fetchPriority = 'high'
+    try {
+      // Network completion alone does not mean a large original is ready to paint.
+      await image.decode()
+    } catch {
+      // Preserve navigation when an original is unavailable.
+    }
+  }
+  if (generation !== lightboxSwitchGeneration || !lightbox.value?.open) return
+  lightboxLoadingPhotoID.value = null
+  await lightboxSlides.value?.slide(step)
+  if (generation !== lightboxSwitchGeneration || !lightbox.value?.open) return
+  previewIndex.value = nextIndex
+  await nextTick()
+  finishLightboxSlide()
+}
+
+function finishLightboxSlide() {
+  lightboxSwitchPending = false
+  const direction = queuedLightboxDirection
+  queuedLightboxDirection = 0
+  if (direction) void stepPhoto(direction)
 }
 
 function scheduleSlideshow() {
@@ -1861,49 +1913,7 @@ function handleLightboxWheel(event: WheelEvent) {
   stepPhoto(delta > 0 ? 1 : -1)
 }
 
-function handleLightboxTouchStart(event: TouchEvent) {
-  if (event.touches.length !== 1) {
-    lightboxTouchStart = null
-    return
-  }
-  const touch = event.touches[0]
-  lightboxTouchStart = { x: touch.clientX, y: touch.clientY }
-}
-
-function handleLightboxTouchEnd(event: TouchEvent) {
-  const start = lightboxTouchStart
-  lightboxTouchStart = null
-  if (!start || event.changedTouches.length !== 1) return
-
-  const touch = event.changedTouches[0]
-  const deltaX = touch.clientX - start.x
-  const deltaY = touch.clientY - start.y
-  const horizontalDistance = Math.abs(deltaX)
-  const verticalDistance = Math.abs(deltaY)
-  const dismissThreshold = Math.max(72, Math.min(140, window.innerHeight * 0.14))
-  if (verticalDistance >= dismissThreshold && verticalDistance > horizontalDistance * 1.25) {
-    closeLightbox()
-    return
-  }
-
-  if (previewPhotos.value.length < 2) return
-  const threshold = Math.max(48, Math.min(96, window.innerWidth * 0.12))
-  if (horizontalDistance < threshold || horizontalDistance <= verticalDistance * 1.25) return
-
-  suppressLightboxBackdropClick = true
-  window.clearTimeout(lightboxTouchResetTimer)
-  lightboxTouchResetTimer = window.setTimeout(() => {
-    suppressLightboxBackdropClick = false
-  }, 400)
-  stepPhoto(deltaX < 0 ? 1 : -1)
-}
-
-function handleLightboxTouchCancel() {
-  lightboxTouchStart = null
-}
-
 function closeFromBackdrop(event: MouseEvent) {
-  if (suppressLightboxBackdropClick) return
   if (event.target === event.currentTarget) closeLightbox()
 }
 
@@ -2424,7 +2434,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('airy:unauthorized', handleUnauthorized)
   window.clearTimeout(directoryRefreshTimer)
   window.clearTimeout(slideshowTimer)
-  window.clearTimeout(lightboxTouchResetTimer)
   window.clearTimeout(newPersonSearchTimer)
   window.clearTimeout(newSeriesSearchTimer)
   clearLightboxPreloads()
@@ -3744,34 +3753,17 @@ onBeforeUnmount(() => {
             <MdIcon name="close" />
           </button>
         </header>
-        <div
-          class="lightbox-stage"
-          @click="closeFromBackdrop"
-          @touchstart.passive="handleLightboxTouchStart"
-          @touchend.passive="handleLightboxTouchEnd"
-          @touchcancel="handleLightboxTouchCancel"
-        >
-          <Transition name="lightbox-media" appear :duration="{ enter: 360, leave: 0 }">
-            <video
-              v-if="currentPhoto.mediaType === 'video'"
-              :key="currentPhoto.id"
-              class="lightbox-image lightbox-video"
-              :src="currentPhoto.original"
-              controls
-              autoplay
-              @ended="handleVideoEnded"
-            ></video>
-            <img
-              v-else
-              :key="currentPhoto.id"
-              class="lightbox-image lightbox-original"
-              :src="currentPhoto.original"
-              :alt="currentPhoto.name"
-              @load="markLightboxImageLoaded"
-              @error="markLightboxImageFailed"
-            />
-          </Transition>
-        </div>
+        <LightboxSlides
+          ref="lightboxSlides"
+          :photos="previewPhotos"
+          :index="previewIndex"
+          :loading="lightboxLoadingPhotoID !== null"
+          @navigate="stepPhoto"
+          @dismiss="closeLightbox"
+          @loaded="markLightboxImageLoaded"
+          @failed="markLightboxImageFailed"
+          @ended="handleVideoEnded"
+        />
       </template>
     </dialog>
   </div>
