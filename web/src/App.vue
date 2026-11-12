@@ -1791,17 +1791,12 @@ function preloadUpcomingPhotos() {
   }
 }
 
-async function markLightboxImageLoaded(event: Event) {
-  const image = event.currentTarget as HTMLImageElement
-  try { await image.decode() } catch { /* The load event can precede decoding. */ }
-  image.classList.add('loaded')
-  if (lightboxLoadingPhotoID.value === image.dataset.photoId) lightboxLoadingPhotoID.value = null
+function markLightboxImageLoaded(photoID: string) {
+  if (lightboxLoadingPhotoID.value === photoID) lightboxLoadingPhotoID.value = null
 }
 
-function markLightboxImageFailed(event: Event) {
-  const image = event.currentTarget as HTMLImageElement
-  image.classList.remove('loaded')
-  if (lightboxLoadingPhotoID.value === image.dataset.photoId) lightboxLoadingPhotoID.value = null
+function markLightboxImageFailed(photoID: string) {
+  if (lightboxLoadingPhotoID.value === photoID) lightboxLoadingPhotoID.value = null
 }
 
 function closeLightbox() {

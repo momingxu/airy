@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import DecodedPreviewImage from './DecodedPreviewImage.vue'
 import type { Photo } from '../types/gallery'
 
 const props = defineProps<{ photos: Photo[]; index: number; loading: boolean }>()
 const emit = defineEmits<{
   navigate: [direction: number]
   dismiss: []
-  loaded: [event: Event]
-  failed: [event: Event]
+  loaded: [id: string]
+  failed: [id: string]
   ended: []
 }>()
 const viewport = ref<HTMLDivElement | null>(null)
@@ -153,7 +154,10 @@ onBeforeUnmount(() => { disposed = true; cancelMotion() })
     @pointerleave="pointerLeave"
     @pointercancel="pointerCancel" @lostpointercapture="pointerCaptureLost">
     <div v-if="loading" class="lightbox-loading" role="status" aria-label="图片加载中">
-      <span class="lightbox-loading-spinner" aria-hidden="true"></span>
+      <svg class="lightbox-loading-spinner" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+        <circle cx="18" cy="18" r="16" stroke="currentColor" stroke-opacity=".25" stroke-width="4" />
+        <path d="M18 2 A16 16 0 0 1 34 18" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
+      </svg>
     </div>
     <div ref="track" class="lightbox-track">
       <div v-for="item in slides" :key="item.key" class="lightbox-slide"
@@ -161,9 +165,9 @@ onBeforeUnmount(() => { disposed = true; cancelMotion() })
         :aria-hidden="item.offset !== 0" :inert="item.offset !== 0">
         <video v-if="item.photo.mediaType === 'video' && item.offset === 0" class="lightbox-image lightbox-video"
           :src="item.photo.original" controls autoplay @ended="emit('ended')"></video>
-        <img v-else class="lightbox-image" :src="item.photo.mediaType === 'image' ? item.photo.original : item.photo.thumbnail"
-          :alt="item.offset === 0 ? item.photo.name : ''" :data-photo-id="item.photo.id" decoding="async" draggable="false"
-          @load="emit('loaded', $event)" @error="emit('failed', $event)" />
+        <DecodedPreviewImage v-else-if="item.photo.mediaType === 'image'" :photo="item.photo" :decorative="item.offset !== 0"
+          @ready="emit('loaded', $event)" @failed="emit('failed', $event)" />
+        <img v-else class="lightbox-image" :src="item.photo.thumbnail" alt="" draggable="false" />
       </div>
     </div>
   </div>

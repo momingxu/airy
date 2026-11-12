@@ -683,8 +683,8 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .content-empty .empty-state { width: 100%; min-height: 0; padding: 24px 12px; }
 
 /* Delay feedback briefly so cached images do not flash a loading indicator. */
-.lightbox-loading { position: absolute; z-index: 3; display: flex; align-items: center; padding: 14px; border-radius: 50%; background: rgb(0 0 0 / 65%); color: #fff; font-size: 14px; pointer-events: none; opacity: 0; animation: lightbox-loading-reveal 120ms ease 150ms forwards; }
-.lightbox-loading-spinner { width: 22px; height: 22px; border: 2px solid rgb(255 255 255 / 25%); border-top-color: #fff; border-radius: 50%; animation: lightbox-loading-spin 800ms linear infinite; }
+.lightbox-loading { position: absolute; z-index: 3; display: flex; align-items: center; padding: 0; background: transparent; color: #fff; font-size: 14px; pointer-events: none; opacity: 0; animation: lightbox-loading-reveal 120ms ease 150ms forwards; }
+.lightbox-loading-spinner { width: 36px; height: 36px; overflow: visible; animation: lightbox-loading-spin 800ms linear infinite; }
 @keyframes lightbox-loading-spin { to { transform: rotate(360deg); } }
 @keyframes lightbox-loading-reveal { to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
@@ -699,3 +699,6 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 
 .lightbox-slide[aria-hidden="true"] { visibility: hidden; pointer-events: none; }
 .lightbox-stage.is-moving .lightbox-slide[aria-hidden="true"] { visibility: visible; }
+
+.lightbox-decoded-original { opacity: 0; }
+.lightbox-decoded-original.ready { opacity: 1; }
