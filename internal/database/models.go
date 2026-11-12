@@ -50,15 +50,15 @@ type ScanSchedule struct {
 
 // Album is a directory of photos within an asset directory.
 type Album struct {
-	PublishedDate string         `gorm:"size:10;not null;default:''"`
-	ID            uint           `gorm:"primaryKey"`
+	PublishedDate string         `gorm:"size:10;not null;default:'';index:idx_albums_gallery,priority:2,sort:desc;index:idx_albums_favorite_gallery,priority:3,sort:desc;index:idx_albums_series_gallery,priority:3,sort:desc"`
+	ID            uint           `gorm:"primaryKey;index:idx_albums_gallery,priority:3,sort:desc;index:idx_albums_favorite_gallery,priority:4,sort:desc;index:idx_albums_series_gallery,priority:4,sort:desc"`
 	DirectoryID   uint           `gorm:"not null;index"`
 	Directory     AssetDirectory `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	SeriesID      *uint          `gorm:"index"`
+	SeriesID      *uint          `gorm:"index;index:idx_albums_series_gallery,priority:1"`
 	AlbumName     string         `gorm:"size:255;not null"`
 	AlbumPath     string         `gorm:"size:1024;not null;uniqueIndex"`
-	ScanStatus    bool           `gorm:"not null;default:false;index"`
-	Favorite      bool           `gorm:"not null;default:false;index"`
+	ScanStatus    bool           `gorm:"not null;default:false;index;index:idx_albums_gallery,priority:1;index:idx_albums_favorite_gallery,priority:1;index:idx_albums_series_gallery,priority:2"`
+	Favorite      bool           `gorm:"not null;default:false;index;index:idx_albums_favorite_gallery,priority:2"`
 	Photos        []Photo        `gorm:"foreignKey:AlbumID"`
 	CreatedAt     time.Time      `gorm:"not null"`
 	UpdatedAt     time.Time      `gorm:"not null"`
@@ -98,13 +98,13 @@ type Series struct {
 // Photo stores metadata for an image or video file in an album.
 type Photo struct {
 	ID            uint      `gorm:"primaryKey"`
-	AlbumID       uint      `gorm:"not null;index"`
+	AlbumID       uint      `gorm:"not null;index;index:idx_photos_album_status_name,priority:1"`
 	Album         Album     `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	PhotoName     string    `gorm:"size:255;not null"`
+	PhotoName     string    `gorm:"size:255;not null;index:idx_photos_album_status_name,priority:3"`
 	PhotoPath     string    `gorm:"size:2048;not null;uniqueIndex"`
 	ThumbnailPath *string   `gorm:"size:2048"`
 	MediaType     string    `gorm:"size:20;not null;default:image;index"`
-	Status        string    `gorm:"size:20;not null;default:active;index"`
+	Status        string    `gorm:"size:20;not null;default:active;index;index:idx_photos_album_status_name,priority:2"`
 	Favorite      bool      `gorm:"not null;default:false;index"`
 	FileSize      int64     `gorm:"not null;default:0"`
 	HeightPX      *uint     `gorm:"column:height_px"`

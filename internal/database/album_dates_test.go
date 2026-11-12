@@ -87,7 +87,12 @@ func TestAlbumPublicationDateMigrationAndDefaults(t *testing.T) {
 	}
 	// Empty dates with no image evidence fall back to the current day, not CreatedAt.
 	db.NowFunc = func() time.Time { return time.Date(2026, 11, 5, 18, 30, 0, 0, time.UTC) }
-	// Reproduce an existing database before this field was introduced.
+	// Reproduce an existing database before this field and its indexes existed.
+	for _, name := range []string{"idx_albums_gallery", "idx_albums_favorite_gallery", "idx_albums_series_gallery"} {
+		if err := db.Migrator().DropIndex(&Album{}, name); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := db.Exec("ALTER TABLE albums DROP COLUMN published_date").Error; err != nil {
 		t.Fatal(err)
 	}
