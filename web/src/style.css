@@ -457,6 +457,9 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .lightbox { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; overflow: hidden; color: #fff; background: rgb(20 17 25 / 80%); border: 0; }
 .lightbox[open] { display: block; animation: lightbox-enter .2s ease both; }
 .lightbox[open]::backdrop { background: rgb(0 0 0 / 18%); backdrop-filter: blur(10px); animation: backdrop-enter .25s ease both; }
+@keyframes lightbox-exit { from { opacity: 1; } to { opacity: 0; } }
+.lightbox[open].is-closing { pointer-events: none; animation: lightbox-exit 140ms ease-in both; }
+.lightbox[open].is-closing::backdrop { animation: backdrop-enter 140ms ease-in reverse both; }
 .lightbox-progress { position: fixed; z-index: 8; top: 0; left: 0; width: 100%; height: 3px; overflow: hidden; background: rgb(255 255 255 / 12%); pointer-events: none; }
 .lightbox-progress span { display: block; width: 100%; height: 100%; background: #d8b9e5; box-shadow: 0 0 10px rgb(216 185 229 / 65%); transform: scaleX(0); transform-origin: left center; animation-name: slideshow-progress; animation-timing-function: linear; animation-fill-mode: forwards; }
 .lightbox-header { position: static; pointer-events: none; }
@@ -469,7 +472,7 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .lightbox-header .lightbox-favorite { right: 84px; }
 .lightbox-header .lightbox-slideshow { right: 146px; }
 .lightbox-header svg { width: 22px; }
-.lightbox-stage { --lightbox-slide-gap: 12px; position: absolute; inset: 22px 20px; display: grid; min-width: 0; min-height: 0; touch-action: none; overflow: hidden; place-items: center; }
+.lightbox-stage { --lightbox-slide-gap: 12px; position: absolute; inset: 0; display: grid; min-width: 0; min-height: 0; touch-action: none; overflow: hidden; place-items: center; }
 .lightbox-image { grid-area: 1 / 1; max-width: 100%; max-height: 100%; min-width: 0; min-height: 0; object-fit: contain; border-radius: 4px; box-shadow: 0 24px 80px rgb(0 0 0 / 45%); }
 .lightbox-track { position: absolute; inset: 0; transform: translate3d(0,0,0); will-change: transform; }
 .lightbox-slide { position: absolute; top: 0; width: 100%; height: 100%; display: grid; min-width: 0; min-height: 0; place-items: center; }
@@ -589,7 +592,7 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
   .settings-saving { margin-left: 0; }
   .scan-button { flex: 1; }
   .remove-folder-button { width: 44px; }
-  .lightbox-stage { --lightbox-slide-gap: 20px; inset: 10px 8px; }
+  .lightbox-stage { --lightbox-slide-gap: 20px; inset: 0; }
   .lightbox-header button { top: 12px; right: 12px; width: 44px; height: 44px; }
   .lightbox-info { top: 24px; left: 16px; }
   .lightbox-header span { font-size: 10px; }
@@ -700,5 +703,7 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .lightbox-slide[aria-hidden="true"] { visibility: hidden; pointer-events: none; }
 .lightbox-stage.is-moving .lightbox-slide[aria-hidden="true"] { visibility: visible; }
 
-.lightbox-decoded-original { opacity: 0; }
-.lightbox-decoded-original.ready { opacity: 1; }
+.lightbox-decoded-original { opacity: 0; pointer-events: none; }
+.lightbox-decoded-original.ready { opacity: 1; pointer-events: auto; }
+
+.lightbox-slide > img { width: 100%; height: 100%; object-fit: contain; border-radius: 0; }

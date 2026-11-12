@@ -115,6 +115,7 @@ const previewIndex = ref(0)
 const lightboxSlides = ref<InstanceType<typeof LightboxSlides> | null>(null)
 const lightboxLoadingPhotoID = ref<string | null>(null)
 let lightboxSwitchPending = false
+let lightboxClosing = false
 let queuedLightboxDirection = 0
 let lightboxSwitchGeneration = 0
 const slideshowPlaying = ref(false)
@@ -1230,7 +1231,7 @@ async function loadPersonGallery(reset = false) {
   personError.value = ''
   try {
     const offset = reset ? 0 : personGroups.value.length
-    const response = await fetchPersonGallery(personID, offset)
+    const response = await fetchPersonGallery(personID, offset, reset ? 5 : 10)
     if (selectedPersonID.value !== personID) return
     const incoming = response.albums.map(toGroup)
     personGroups.value = reset ? incoming : [...personGroups.value, ...incoming]
@@ -1408,7 +1409,7 @@ async function loadSeriesGallery(reset = false) {
   seriesError.value = ''
   try {
     const offset = reset ? 0 : seriesGroups.value.length
-    const response = await fetchSeriesGallery(seriesID, offset)
+    const response = await fetchSeriesGallery(seriesID, offset, reset ? 5 : 10)
     if (selectedSeriesID.value !== seriesID) return
     const incoming = response.albums.map(toGroup)
     seriesGroups.value = reset ? incoming : [...seriesGroups.value, ...incoming]
@@ -1799,12 +1800,23 @@ function markLightboxImageFailed(photoID: string) {
   if (lightboxLoadingPhotoID.value === photoID) lightboxLoadingPhotoID.value = null
 }
 
-function closeLightbox() {
+async function closeLightbox() {
+  if (lightboxClosing || !lightbox.value?.open) return
+  lightboxClosing = true
+  lightboxSwitchGeneration += 1
   slideshowPlaying.value = false
-  lightbox.value?.close()
+  window.clearTimeout(slideshowTimer)
+  const dialog = lightbox.value
+  dialog.classList.add('is-closing')
+  // Keep the dialog in the top layer until its mask and content have faded out.
+  const maskAnimations = dialog.getAnimations().map(animation => animation.finished.catch(() => {}))
+  await Promise.all([lightboxSlides.value?.fadeOut(), ...maskAnimations])
+  dialog.close()
 }
 
 function handleLightboxClose() {
+  lightbox.value?.classList.remove('is-closing')
+  lightboxClosing = false
   lightboxLoadingPhotoID.value = null
   lightboxSwitchGeneration += 1
   lightboxSwitchPending = false
@@ -1818,7 +1830,7 @@ function handleLightboxClose() {
 }
 
 async function stepPhoto(direction: number) {
-  if (previewPhotos.value.length < 2 || !lightbox.value?.open) return
+  if (lightboxClosing || previewPhotos.value.length < 2 || !lightbox.value?.open) return
   const step = direction > 0 ? 1 : -1
   if (lightboxSwitchPending) {
     // Coalesce repeated input instead of mounting several moving full-size images.
@@ -1957,7 +1969,7 @@ async function loadGallery(reset = false) {
 
   try {
     const offset = reset ? 0 : groups.value.length
-    const response = await fetchGallery(offset, 10, false, search)
+    const response = await fetchGallery(offset, reset ? 5 : 10, false, search)
     if (version !== galleryLoadVersion || search !== gallerySearch.value) return
     const incoming = response.albums.map(toGroup)
     groups.value = reset ? incoming : [...groups.value, ...incoming]
@@ -1989,7 +2001,7 @@ async function loadFavoriteGallery(reset = false) {
   try {
     const offset = reset ? 0 : favoriteGroups.value.length
     const [response, photoGroup] = await Promise.all([
-      fetchGallery(offset, 10, true),
+      fetchGallery(offset, reset ? 5 : 10, true),
       reset ? loadFavoritePhotoGroup() : Promise.resolve(undefined),
     ])
     const incoming = response.albums.map(toGroup)
@@ -2032,9 +2044,7 @@ function maybeLoadMore() {
   const element = content.value
   if (!element) return
   const remaining = element.scrollHeight - element.scrollTop - element.clientHeight
-  const preloadDistance = window.matchMedia('(max-width: 760px)').matches
-    ? Math.max(2400, element.clientHeight * 6)
-    : 1200
+  const preloadDistance = element.clientHeight * 2
   if (remaining >= preloadDistance) return
   if (activeView.value === 'photos' && hasMoreAlbums.value && !galleryLoading.value && !galleryLoadingMore.value) {
     void loadGallery(false)
@@ -3708,6 +3718,7 @@ onBeforeUnmount(() => {
       class="lightbox"
       @click="closeFromBackdrop"
       @close="handleLightboxClose"
+      @cancel.prevent="closeLightbox"
       @wheel.prevent="handleLightboxWheel"
     >
       <template v-if="currentPhoto">

@@ -30,6 +30,8 @@ let horizontal = false
 let awaitingNavigation = false
 let suppressClickUntil = 0
 let disposed = false
+let closing = false
+let closeAnimation: Animation | null = null
 
 function pitch() {
   const gap = viewport.value ? parseFloat(getComputedStyle(viewport.value).getPropertyValue('--lightbox-slide-gap')) : 12
@@ -67,7 +69,18 @@ async function slide(direction: number) {
   track.value?.querySelectorAll('video').forEach(video => video.pause())
   await moveTo(-direction * pitch())
 }
-defineExpose({ slide })
+async function fadeOut() {
+  closing = true
+  cancelMotion()
+  const element = track.value
+  if (!element) return
+  closeAnimation = element.animate([{ opacity: 1 }, { opacity: 0 }], {
+    duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 140,
+    easing: 'ease-out', fill: 'forwards',
+  })
+  try { await closeAnimation.finished } catch { /* Closing may unmount the preview. */ }
+}
+defineExpose({ slide, fadeOut })
 watch(() => props.index, () => {
   cancelMotion()
   position = 0
@@ -78,7 +91,7 @@ watch(() => props.index, () => {
 
 function pointerDown(event: PointerEvent) {
   if (!event.isPrimary) { if (start) pointerCancel(); return }
-  if (props.loading || awaitingNavigation || animation || event.button !== 0 || (event.target as Element).closest('video')) return
+  if (closing || props.loading || awaitingNavigation || animation || event.button !== 0 || (event.target as Element).closest('video')) return
   start = { x: event.clientX, y: event.clientY, time: performance.now(), pointerId: event.pointerId, pointerType: event.pointerType }
   horizontal = false
 }
@@ -143,9 +156,23 @@ function pointerLeave(event: PointerEvent) {
 }
 function backdropClick(event: MouseEvent) {
   if (performance.now() < suppressClickUntil) return
-  if (!(event.target as Element).closest('img, video')) emit('dismiss')
+  const target = event.target as Element
+  if (target.closest('video')) return
+  const image = target.closest('img')
+  if (image && image.naturalWidth && image.naturalHeight) {
+    // object-fit: contain leaves letterboxing inside the full-size img element.
+    // Only the painted image should consume clicks; its surrounding area is the mask.
+    const rect = image.getBoundingClientRect()
+    const scale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight)
+    const width = image.naturalWidth * scale
+    const height = image.naturalHeight * scale
+    const left = rect.left + (rect.width - width) / 2
+    const top = rect.top + (rect.height - height) / 2
+    if (event.clientX >= left && event.clientX <= left + width && event.clientY >= top && event.clientY <= top + height) return
+  }
+  emit('dismiss')
 }
-onBeforeUnmount(() => { disposed = true; cancelMotion() })
+onBeforeUnmount(() => { disposed = true; cancelMotion(); closeAnimation?.cancel() })
 </script>
 
 <template>
