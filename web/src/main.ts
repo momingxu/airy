@@ -12,7 +12,7 @@ document.addEventListener('touchmove', (event) => {
 document.addEventListener('wheel', (event) => {
   if (event.ctrlKey || event.metaKey) {
     event.preventDefault()
-    event.stopImmediatePropagation()
+    // Keep the event propagating so the lightbox can implement image zoom.
   }
 }, { passive: false, capture: true })
 document.addEventListener('keydown', (event) => {

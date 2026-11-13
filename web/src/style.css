@@ -149,8 +149,8 @@ body, .sidebar, .content, .nav-item, .theme-toggle, .eyebrow, .photo-card, .add-
 .logout-button:disabled { cursor: wait; opacity: .5; }
 
 @media (min-width: 1100px) {
-  .settings-view { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-  .settings-card { width: 100%; }
+  .settings-view { display: block; column-count: 2; column-gap: 22px; }
+  .settings-view > .settings-card { display: inline-grid; width: 100%; margin-bottom: 22px; break-inside: avoid; vertical-align: top; }
 }
 
 .page-header { display: flex; align-items: flex-end; justify-content: space-between; width: 100%; min-height: 132px; margin: 0 0 46px; animation: rise-in .5s .06s var(--ease) both; }
@@ -712,7 +712,13 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 
 @media (hover: hover) and (pointer: fine) {
   .lightbox-stage, .lightbox-stage .lightbox-slide > img { cursor: default; }
-  .lightbox-stage.is-over-image:not(.is-zoomed):not(.is-pressed) .lightbox-slide > img { cursor: zoom-in; }
-  .lightbox-stage.is-over-image.is-zoomed:not(.is-pressed) .lightbox-slide > img { cursor: zoom-out; }
-  .lightbox-stage.is-pressed, .lightbox-stage.is-pressed .lightbox-slide > img { cursor: grabbing; }
+  .lightbox-stage.is-over-image:not(.is-zoomed):not(.is-pressed) .lightbox-slide > img { cursor: url('/zoom-in-cursor.svg') 14 14, zoom-in; }
+  .lightbox-stage.is-over-image.is-zoomed:not(.is-pressed) .lightbox-slide > img { cursor: url('/zoom-out-cursor.svg') 14 14, zoom-out; }
+  .lightbox-stage.is-pressed, .lightbox-stage.is-pressed .lightbox-slide > img { cursor: url('/grabbing-cursor.svg') 18 18, grabbing; }
 }
+
+.wheel-zoom-options { display: flex; gap: 12px; flex-wrap: wrap; }
+.wheel-zoom-options button { color: var(--text-muted); background: var(--surface); border: 1px solid var(--line); }
+.wheel-zoom-options button.selected { border-color: var(--accent); color: var(--on-accent); background: var(--accent); }
+.wheel-zoom-options button:not(.selected):hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.wheel-zoom-options button { min-width: 88px; }

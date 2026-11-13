@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isWheelZoomModifier, matchesWheelZoom, wheelZoomLabels, type WheelZoomModifier } from './utils/wheelZoom'
 import LightboxSlides from './components/LightboxSlides.vue'
 import FavoriteIcon from "./components/FavoriteIcon.vue"
 import AlbumCsvActions from "./components/AlbumCsvActions.vue"
@@ -112,6 +113,7 @@ const confirmationLabel = ref('确定')
 const gallerySearchInputElement = ref<HTMLInputElement | null>(null)
 const previewPhotos = ref<Photo[]>([])
 const previewIndex = ref(0)
+const wheelZoomModifier = ref<WheelZoomModifier>('ctrl')
 const lightboxZoomed = ref(false)
 const lightboxSlides = ref<InstanceType<typeof LightboxSlides> | null>(null)
 const lightboxLoadingPhotoID = ref<string | null>(null)
@@ -1913,7 +1915,8 @@ function handleVisibilityChange() {
 }
 
 function handleLightboxWheel(event: WheelEvent) {
-  if (event.ctrlKey) {
+  if (matchesWheelZoom(event, wheelZoomModifier.value)) {
+    modifierShortcutChorded = true
     lightboxSlides.value?.zoomWithWheel(event)
     return
   }
@@ -2317,6 +2320,8 @@ function handleKeyup(event: KeyboardEvent) {
   }
 }
 
+watch(wheelZoomModifier, value => localStorage.setItem('airy-wheel-zoom-modifier', value))
+
 watch(theme, (value) => {
   document.documentElement.dataset.theme = value
   localStorage.setItem('airy-theme', value)
@@ -2351,6 +2356,8 @@ watch(seriesName, () => {
 })
 
 onMounted(async () => {
+  const savedWheelZoomModifier = localStorage.getItem('airy-wheel-zoom-modifier')
+  if (isWheelZoomModifier(savedWheelZoomModifier)) wheelZoomModifier.value = savedWheelZoomModifier
   const savedThemeSeed = normalizeThemeSeed(localStorage.getItem(THEME_SEED_STORAGE_KEY)) ?? DEFAULT_THEME_SEED
   themeSeed.value = savedThemeSeed
   themeSeedDraft.value = savedThemeSeed
@@ -2748,6 +2755,21 @@ onBeforeUnmount(() => {
               <i :style="{ backgroundColor: preset.value }"></i>
               <span>{{ preset.name }}</span>
             </button>
+          </div>
+        </section>
+
+        <section class="settings-card">
+          <header>
+            <span class="settings-icon" aria-hidden="true"><MdIcon name="zoomIn" /></span>
+            <div>
+              <h2>滚轮缩放辅助键</h2>
+              <p>预览图片时，按住所选辅助键并滚动滚轮进行缩放。选择后自动保存到当前浏览器。</p>
+            </div>
+          </header>
+          <div class="wheel-zoom-options" role="radiogroup" aria-label="滚轮缩放辅助键">
+            <button v-for="(label, key) in wheelZoomLabels" :key="key" class="secondary-action" type="button"
+              role="radio" :aria-checked="wheelZoomModifier === key" :class="{ selected: wheelZoomModifier === key }"
+              @click="wheelZoomModifier = key">{{ label }}</button>
           </div>
         </section>
 
@@ -3748,7 +3770,7 @@ onBeforeUnmount(() => {
             <span>{{ previewIndex + 1 }} / {{ previewPhotos.length }}</span>
           </div>
           <button v-if="currentPhoto.mediaType === 'image'" class="lightbox-zoom" type="button"
-            :aria-label="lightboxZoomed ? '恢复适应屏幕' : '放大图片'" :title="lightboxZoomed ? '恢复适应屏幕' : '放大图片（双击 / Ctrl+滚轮）'"
+            :aria-label="lightboxZoomed ? '恢复适应屏幕' : '放大图片'" :title="lightboxZoomed ? '恢复适应屏幕' : `放大图片（鼠标单击 / 触屏双击 / ${wheelZoomLabels[wheelZoomModifier]}+滚轮）`"
             :aria-pressed="lightboxZoomed" :disabled="lightboxLoadingPhotoID !== null"
             @click="lightboxSlides?.toggleZoom()">
             <MdIcon :name="lightboxZoomed ? 'zoomOut' : 'zoomIn'" />
@@ -3783,6 +3805,8 @@ onBeforeUnmount(() => {
           :photos="previewPhotos"
           :index="previewIndex"
           :loading="lightboxLoadingPhotoID !== null"
+          :wheel-zoom-modifier="wheelZoomModifier"
+          @zoom-gesture="modifierShortcutChorded = true"
           @navigate="stepPhoto"
           @dismiss="closeLightbox"
           @loaded="markLightboxImageLoaded"
