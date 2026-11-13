@@ -695,10 +695,6 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
   .lightbox-loading-spinner { animation: none; }
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .lightbox-slide > img { cursor: grab; }
-  .lightbox-stage.is-dragging, .lightbox-stage.is-dragging .lightbox-slide > img { cursor: grabbing; }
-}
 
 .lightbox-slide[aria-hidden="true"] { visibility: hidden; pointer-events: none; }
 .lightbox-stage.is-moving .lightbox-slide[aria-hidden="true"] { visibility: visible; }
@@ -707,3 +703,16 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .lightbox-decoded-original.ready { opacity: 1; pointer-events: auto; }
 
 .lightbox-slide > img { width: 100%; height: 100%; object-fit: contain; border-radius: 0; }
+
+.lightbox-header .lightbox-zoom { right: 208px; }
+.lightbox-slide > img { transition: transform 180ms ease-out; transform-origin: center; }
+.lightbox-stage.is-dragging .lightbox-slide > img { transition: none; }
+@media (max-width: 760px) { .lightbox-header .lightbox-zoom { right: 168px; } }
+
+
+@media (hover: hover) and (pointer: fine) {
+  .lightbox-stage, .lightbox-stage .lightbox-slide > img { cursor: default; }
+  .lightbox-stage.is-over-image:not(.is-zoomed):not(.is-pressed) .lightbox-slide > img { cursor: zoom-in; }
+  .lightbox-stage.is-over-image.is-zoomed:not(.is-pressed) .lightbox-slide > img { cursor: zoom-out; }
+  .lightbox-stage.is-pressed, .lightbox-stage.is-pressed .lightbox-slide > img { cursor: grabbing; }
+}

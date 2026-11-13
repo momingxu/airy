@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import DecodedPreviewImage from './DecodedPreviewImage.vue'
 import type { Photo } from '../types/gallery'
 
@@ -10,11 +10,22 @@ const emit = defineEmits<{
   loaded: [id: string]
   failed: [id: string]
   ended: []
+  zoomChange: [zoomed: boolean]
 }>()
 const viewport = ref<HTMLDivElement | null>(null)
 const track = ref<HTMLDivElement | null>(null)
 const dragging = ref(false)
+const pressed = ref(false)
+const overImage = ref(false)
 const moving = ref(false)
+const zoom = ref(1)
+const zoomed = ref(false)
+let panX = 0
+let panY = 0
+let panStartX = 0
+let panStartY = 0
+let lastTap = 0
+let lastTouchTap = 0
 const slides = computed(() => {
   const offsets = props.photos.length < 2 ? [0] : [-1, 0, 1]
   return offsets.map(offset => {
@@ -33,6 +44,70 @@ let disposed = false
 let closing = false
 let closeAnimation: Animation | null = null
 
+function paintZoom() {
+  const image = track.value?.querySelector<HTMLImageElement>('.lightbox-slide[aria-hidden="false"] img')
+  if (!image || !viewport.value) return
+  const ratio = image.naturalWidth / image.naturalHeight
+  const width = viewport.value.clientWidth
+  const height = viewport.value.clientHeight
+  const fitWidth = Math.min(width, height * ratio)
+  const fitHeight = Math.min(height, width / ratio)
+  const limitX = Math.max(0, (fitWidth * zoom.value - width) / 2)
+  const limitY = Math.max(0, (fitHeight * zoom.value - height) / 2)
+  panX = Math.max(-limitX, Math.min(limitX, panX))
+  panY = Math.max(-limitY, Math.min(limitY, panY))
+  image.style.transform = `translate3d(${panX}px,${panY}px,0) scale(${zoom.value})`
+}
+function toggleZoom() {
+  const image = track.value?.querySelector<HTMLImageElement>('.lightbox-slide[aria-hidden="false"] img.ready')
+  if (!image || !viewport.value || closing || awaitingNavigation) return
+  // Switching modes must release the previous pan gesture and any queued frame.
+  const pointerId = start?.pointerId
+  start = null
+  if (pointerId !== undefined) releasePointer(pointerId)
+  cancelMotion()
+  horizontal = false
+  pressed.value = false
+  dragging.value = false
+  moving.value = false
+  position = 0
+  paint()
+  zoomed.value = !zoomed.value
+  const fitScale = Math.min(viewport.value.clientWidth / image.naturalWidth, viewport.value.clientHeight / image.naturalHeight)
+  zoom.value = zoomed.value ? 2 / fitScale : 1
+  panX = panY = panStartX = panStartY = 0
+  paintZoom()
+  emit('zoomChange', zoomed.value)
+}
+function zoomWithWheel(event: WheelEvent) {
+  const image = track.value?.querySelector<HTMLImageElement>('.lightbox-slide[aria-hidden="false"] img.ready')
+  if (!image || !viewport.value || closing || awaitingNavigation || animation || start) return
+  const rect = viewport.value.getBoundingClientRect()
+  const fitScale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight)
+  const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1)
+  const next = Math.max(1, Math.min(Math.max(1, 2 / fitScale), zoom.value * Math.exp(-Math.max(-200, Math.min(200, delta)) * .002)))
+  const x = event.clientX - rect.left - rect.width / 2
+  const y = event.clientY - rect.top - rect.height / 2
+  const ratio = next / zoom.value
+  panX = x - (x - panX) * ratio
+  panY = y - (y - panY) * ratio
+  zoom.value = next
+  zoomed.value = next > 1
+  if (!zoomed.value) panX = panY = 0
+  paintZoom()
+  emit('zoomChange', zoomed.value)
+}
+function doubleClick(event: MouseEvent) {
+  if (lastTouchTap && performance.now() - lastTouchTap < 500) return
+  if ((event.target as Element).closest('img')) toggleZoom()
+}
+function resetZoom() {
+  zoomed.value = false
+  zoom.value = 1
+  panX = panY = 0
+  track.value?.querySelectorAll<HTMLImageElement>('img').forEach(image => { image.style.transform = '' })
+  emit('zoomChange', false)
+}
 function pitch() {
   const gap = viewport.value ? parseFloat(getComputedStyle(viewport.value).getPropertyValue('--lightbox-slide-gap')) : 12
   return (viewport.value?.clientWidth ?? 0) + gap
@@ -66,6 +141,9 @@ async function moveTo(target: number) {
 }
 async function slide(direction: number) {
   awaitingNavigation = true
+  if (start) releasePointer(start.pointerId)
+  start = null
+  dragging.value = false
   track.value?.querySelectorAll('video').forEach(video => video.pause())
   await moveTo(-direction * pitch())
 }
@@ -80,25 +158,56 @@ async function fadeOut() {
   })
   try { await closeAnimation.finished } catch { /* Closing may unmount the preview. */ }
 }
-defineExpose({ slide, fadeOut })
-watch(() => props.index, () => {
+defineExpose({ slide, fadeOut, resetNavigation, toggleZoom, zoomWithWheel })
+function resetNavigation() {
+  const pointerId = start?.pointerId
+  start = null
+  if (pointerId !== undefined) releasePointer(pointerId)
+  horizontal = false
+  pressed.value = false
+  dragging.value = false
+  resetZoom()
   cancelMotion()
   position = 0
   moving.value = false
   awaitingNavigation = false
   paint()
-}, { flush: 'post' })
+}
+watch(() => props.index, resetNavigation, { flush: 'post' })
 
 function pointerDown(event: PointerEvent) {
   if (!event.isPrimary) { if (start) pointerCancel(); return }
-  if (closing || props.loading || awaitingNavigation || animation || event.button !== 0 || (event.target as Element).closest('video')) return
-  start = { x: event.clientX, y: event.clientY, time: performance.now(), pointerId: event.pointerId, pointerType: event.pointerType }
+  if (closing || awaitingNavigation || event.button !== 0 || (event.target as Element).closest('video')) return
+  // A new gesture may interrupt a snapback instead of being ignored until it ends.
+  if (animation && track.value) {
+    position = new DOMMatrixReadOnly(getComputedStyle(track.value).transform).m41
+    cancelMotion()
+    paint()
+  }
+  pressed.value = true
+  overImage.value = isImagePoint(event)
+  const originX = event.clientX - position
+  start = { x: originX, y: event.clientY, time: performance.now(), pointerId: event.pointerId, pointerType: event.pointerType }
   horizontal = false
+  panStartX = panX
+  panStartY = panY
 }
 function pointerMove(event: PointerEvent) {
+  overImage.value = isImagePoint(event)
   if (!start || event.pointerId !== start.pointerId) return
+  if (event.pointerType === 'mouse' && event.buttons === 0) { pointerCancel(event); return }
   const dx = event.clientX - start.x
   const dy = event.clientY - start.y
+  if (zoomed.value) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 4 && !dragging.value) return
+    viewport.value?.setPointerCapture(event.pointerId)
+    dragging.value = true
+    panX = panStartX + dx
+    panY = panStartY + dy
+    if (event.cancelable) event.preventDefault()
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; paintZoom() })
+    return
+  }
   if (!horizontal && (Math.abs(dx) < 4 || Math.abs(dx) <= Math.abs(dy))) return
   if (props.photos.length < 2) return
   const capture = !horizontal
@@ -118,10 +227,22 @@ function pointerUp(event: PointerEvent) {
   const origin = start
   if (!origin || event.pointerId !== origin.pointerId) return
   start = null
+  pressed.value = false
   dragging.value = false
   releasePointer(origin.pointerId)
   const dx = event.clientX - origin.x
   const dy = event.clientY - origin.y
+  if (origin.pointerType === 'touch') lastTouchTap = performance.now()
+  const moved = Math.max(Math.abs(dx), Math.abs(dy)) > 4
+  if (!moved && origin.pointerType === 'touch' && (event.target as Element).closest('img')) {
+    const now = performance.now()
+    if (lastTap && now - lastTap < 300) { lastTap = 0; toggleZoom() }
+    else lastTap = now
+  }
+  if (zoomed.value) {
+    if (moved) suppressClickUntil = performance.now() + 450
+    return
+  }
   if (!horizontal) {
     if (origin.pointerType !== 'mouse' && Math.abs(dy) > 90 && Math.abs(dy) > Math.abs(dx) * 1.25) emit('dismiss')
     return
@@ -140,10 +261,12 @@ function pointerCancel(event?: PointerEvent) {
   const pointerId = start.pointerId
   start = null
   horizontal = false
+  pressed.value = false
   dragging.value = false
   releasePointer(pointerId)
   suppressClickUntil = performance.now() + 450
-  void moveTo(0)
+  if (zoomed.value) { cancelAnimationFrame(frame); frame = 0; paintZoom() }
+  else void moveTo(0)
 }
 function pointerCaptureLost(event: PointerEvent) {
   // Touch starts with implicit capture on the image. Transferring it to the
@@ -152,31 +275,37 @@ function pointerCaptureLost(event: PointerEvent) {
   pointerCancel(event)
 }
 function pointerLeave(event: PointerEvent) {
+  overImage.value = false
   if (event.pointerType === 'mouse' && !horizontal) pointerCancel(event)
 }
+function isImagePoint(event: MouseEvent) {
+  const image = (event.target as Element).closest('img')
+  if (!image || !image.naturalWidth || !image.naturalHeight) return false
+  const rect = image.getBoundingClientRect()
+  const scale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight)
+  const width = image.naturalWidth * scale
+  const height = image.naturalHeight * scale
+  const left = rect.left + (rect.width - width) / 2
+  const top = rect.top + (rect.height - height) / 2
+  return event.clientX >= left && event.clientX <= left + width && event.clientY >= top && event.clientY <= top + height
+}
 function backdropClick(event: MouseEvent) {
-  if (performance.now() < suppressClickUntil) return
-  const target = event.target as Element
-  if (target.closest('video')) return
-  const image = target.closest('img')
-  if (image && image.naturalWidth && image.naturalHeight) {
-    // object-fit: contain leaves letterboxing inside the full-size img element.
-    // Only the painted image should consume clicks; its surrounding area is the mask.
-    const rect = image.getBoundingClientRect()
-    const scale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight)
-    const width = image.naturalWidth * scale
-    const height = image.naturalHeight * scale
-    const left = rect.left + (rect.width - width) / 2
-    const top = rect.top + (rect.height - height) / 2
-    if (event.clientX >= left && event.clientX <= left + width && event.clientY >= top && event.clientY <= top + height) return
-  }
+  if (performance.now() < suppressClickUntil || zoomed.value) return
+  if ((event.target as Element).closest('video') || isImagePoint(event)) return
   emit('dismiss')
 }
-onBeforeUnmount(() => { disposed = true; cancelMotion(); closeAnimation?.cancel() })
+function windowBlur() { pointerCancel() }
+onMounted(() => window.addEventListener('blur', windowBlur))
+onBeforeUnmount(() => {
+  disposed = true
+  window.removeEventListener('blur', windowBlur)
+  cancelMotion()
+  closeAnimation?.cancel()
+})
 </script>
 
 <template>
-  <div ref="viewport" class="lightbox-stage" :class="{ 'is-dragging': dragging, 'is-moving': moving }" :aria-busy="loading" @click="backdropClick"
+  <div ref="viewport" class="lightbox-stage" :class="{ 'is-dragging': dragging, 'is-moving': moving, 'is-zoomed': zoomed, 'is-pressed': pressed, 'is-over-image': overImage }" :aria-busy="loading" @click="backdropClick" @dblclick="doubleClick"
     @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="pointerUp"
     @pointerleave="pointerLeave"
     @pointercancel="pointerCancel" @lostpointercapture="pointerCaptureLost">

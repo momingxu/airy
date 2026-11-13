@@ -112,6 +112,7 @@ const confirmationLabel = ref('确定')
 const gallerySearchInputElement = ref<HTMLInputElement | null>(null)
 const previewPhotos = ref<Photo[]>([])
 const previewIndex = ref(0)
+const lightboxZoomed = ref(false)
 const lightboxSlides = ref<InstanceType<typeof LightboxSlides> | null>(null)
 const lightboxLoadingPhotoID = ref<string | null>(null)
 let lightboxSwitchPending = false
@@ -1815,6 +1816,7 @@ async function closeLightbox() {
 }
 
 function handleLightboxClose() {
+  lightboxZoomed.value = false
   lightbox.value?.classList.remove('is-closing')
   lightboxClosing = false
   lightboxLoadingPhotoID.value = null
@@ -1860,11 +1862,17 @@ async function stepPhoto(direction: number) {
   }
   if (generation !== lightboxSwitchGeneration || !lightbox.value?.open) return
   lightboxLoadingPhotoID.value = null
-  await lightboxSlides.value?.slide(step)
-  if (generation !== lightboxSwitchGeneration || !lightbox.value?.open) return
-  previewIndex.value = nextIndex
-  await nextTick()
-  finishLightboxSlide()
+  try {
+    await lightboxSlides.value?.slide(step)
+    if (generation !== lightboxSwitchGeneration || !lightbox.value?.open) return
+    previewIndex.value = nextIndex
+    await nextTick()
+  } finally {
+    if (generation === lightboxSwitchGeneration) {
+      lightboxSlides.value?.resetNavigation()
+      finishLightboxSlide()
+    }
+  }
 }
 
 function finishLightboxSlide() {
@@ -1905,6 +1913,11 @@ function handleVisibilityChange() {
 }
 
 function handleLightboxWheel(event: WheelEvent) {
+  if (event.ctrlKey) {
+    lightboxSlides.value?.zoomWithWheel(event)
+    return
+  }
+  if (lightboxZoomed.value) return
   const rawDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX
   const deltaUnit = event.deltaMode === WheelEvent.DOM_DELTA_LINE
     ? 16
@@ -3734,6 +3747,12 @@ onBeforeUnmount(() => {
           <div class="lightbox-info">
             <span>{{ previewIndex + 1 }} / {{ previewPhotos.length }}</span>
           </div>
+          <button v-if="currentPhoto.mediaType === 'image'" class="lightbox-zoom" type="button"
+            :aria-label="lightboxZoomed ? '恢复适应屏幕' : '放大图片'" :title="lightboxZoomed ? '恢复适应屏幕' : '放大图片（双击 / Ctrl+滚轮）'"
+            :aria-pressed="lightboxZoomed" :disabled="lightboxLoadingPhotoID !== null"
+            @click="lightboxSlides?.toggleZoom()">
+            <MdIcon :name="lightboxZoomed ? 'zoomOut' : 'zoomIn'" />
+          </button>
           <button
             :class="['lightbox-slideshow', { playing: slideshowPlaying }]"
             type="button"
@@ -3769,6 +3788,7 @@ onBeforeUnmount(() => {
           @loaded="markLightboxImageLoaded"
           @failed="markLightboxImageFailed"
           @ended="handleVideoEnded"
+          @zoom-change="lightboxZoomed = $event; if ($event) slideshowPlaying = false"
         />
       </template>
     </dialog>
