@@ -466,7 +466,7 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .lightbox-info { position: fixed; z-index: 6; top: 30px; left: 30px; pointer-events: none; }
 .lightbox-header span { color: #d8d3da; font-size: 12px; filter: drop-shadow(0 1px 5px rgb(0 0 0 / 65%)); }
 .lightbox-header button { display: grid; padding: 0; color: #fff; background: transparent; border: 0; border-radius: 50%; cursor: pointer; filter: drop-shadow(0 1px 5px rgb(0 0 0 / 58%)); place-items: center; transition: color .2s var(--ease), background-color .2s var(--ease), transform .2s var(--ease); }
-.lightbox-header button:hover { background: rgb(255 255 255 / 18%); transform: scale(1.08); }
+.lightbox-header button:hover { background: transparent; transform: none; }
 .lightbox-header button { position: fixed; z-index: 6; top: 22px; right: 22px; width: 48px; height: 48px; pointer-events: auto; }
 .lightbox-header .lightbox-close { right: 22px; }
 .lightbox-header .lightbox-favorite { right: 84px; }
@@ -722,3 +722,5 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .wheel-zoom-options button.selected { border-color: var(--accent); color: var(--on-accent); background: var(--accent); }
 .wheel-zoom-options button:not(.selected):hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .wheel-zoom-options button { min-width: 88px; }
+
+.lightbox-header .lightbox-favorite::before { display: none; }

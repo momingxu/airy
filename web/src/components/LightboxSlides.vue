@@ -38,6 +38,8 @@ const slides = computed(() => {
 })
 let position = 0
 let frame = 0
+let hoverFrame = 0
+let dragPitch = 0
 let animation: Animation | null = null
 let start: { x: number; y: number; time: number; pointerId: number; pointerType: string } | null = null
 let horizontal = false
@@ -165,7 +167,10 @@ async function fadeOut() {
   })
   try { await closeAnimation.finished } catch { /* Closing may unmount the preview. */ }
 }
-defineExpose({ slide, fadeOut, resetNavigation, toggleZoom, zoomWithWheel })
+function isPhotoReady(id: string) {
+  return [...(track.value?.querySelectorAll<HTMLImageElement>('img.ready') ?? [])].some(image => image.dataset.photoId === id)
+}
+defineExpose({ slide, fadeOut, resetNavigation, toggleZoom, zoomWithWheel, isPhotoReady })
 function resetNavigation() {
   touchPointers.clear()
   pinch = null
@@ -249,6 +254,7 @@ function pointerDown(event: PointerEvent) {
   }
   pressed.value = true
   overImage.value = isImagePoint(event)
+  dragPitch = pitch()
   const originX = event.clientX - position
   start = { x: originX, y: event.clientY, time: performance.now(), pointerId: event.pointerId, pointerType: event.pointerType }
   horizontal = false
@@ -258,8 +264,15 @@ function pointerDown(event: PointerEvent) {
 function pointerMove(event: PointerEvent) {
   if (touchPointers.has(event.pointerId)) touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
   if (pinch) { movePinch(event); return }
-  overImage.value = isImagePoint(event)
-  if (!start || event.pointerId !== start.pointerId) return
+  if (!start) {
+    // Hit testing can read layout; do it at most once per frame and never while dragging.
+    if (!hoverFrame) hoverFrame = requestAnimationFrame(() => {
+      hoverFrame = 0
+      if (!start) overImage.value = isImagePoint(event)
+    })
+    return
+  }
+  if (event.pointerId !== start.pointerId) return
   if (event.pointerType === 'mouse' && event.buttons === 0) { pointerCancel(event); return }
   const dx = event.clientX - start.x
   const dy = event.clientY - start.y
@@ -281,7 +294,7 @@ function pointerMove(event: PointerEvent) {
   dragging.value = true
   moving.value = true
   if (event.cancelable) event.preventDefault()
-  position = Math.max(-pitch(), Math.min(pitch(), dx))
+  position = Math.max(-dragPitch, Math.min(dragPitch, dx))
   // Update only the compositor transform, without rerendering the gallery on every pointer event.
   if (!frame) frame = requestAnimationFrame(() => { frame = 0; paint() })
 }
@@ -349,6 +362,8 @@ function pointerCaptureLost(event: PointerEvent) {
   pointerCancel(event)
 }
 function pointerLeave(event: PointerEvent) {
+  cancelAnimationFrame(hoverFrame)
+  hoverFrame = 0
   overImage.value = false
   if (event.pointerType === 'mouse' && !horizontal) pointerCancel(event)
 }
@@ -386,6 +401,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', windowBlur)
   viewport.value?.removeEventListener('wheel', wheel, { capture: true })
   cancelMotion()
+  cancelAnimationFrame(hoverFrame)
   closeAnimation?.cancel()
 })
 </script>

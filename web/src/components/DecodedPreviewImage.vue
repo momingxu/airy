@@ -44,6 +44,6 @@ onBeforeUnmount(() => { generation += 1; revealAnimation?.cancel() })
 
 <template>
   <img ref="original" :key="photo.original" class="lightbox-image lightbox-decoded-original" :class="{ ready }"
-    :src="photo.original" :alt="decorative ? '' : photo.name" decoding="async" draggable="false"
+    :data-photo-id="photo.id" :src="photo.original" :alt="decorative ? '' : photo.name" decoding="async" draggable="false"
     @load="reveal" @error="failed" />
 </template>

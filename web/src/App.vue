@@ -1845,7 +1845,7 @@ async function stepPhoto(direction: number) {
   const generation = ++lightboxSwitchGeneration
   const nextIndex = (previewIndex.value + step + previewPhotos.value.length) % previewPhotos.value.length
   const photo = previewPhotos.value[nextIndex]
-  if (photo.mediaType === 'image') {
+  if (photo.mediaType === 'image' && !lightboxSlides.value?.isPhotoReady(photo.id)) {
     lightboxLoadingPhotoID.value = photo.id
     let image = preloadedLightboxImages.get(photo.id)
     if (!image) {
