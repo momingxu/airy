@@ -275,8 +275,13 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
               >
                 <FavoriteIcon :key="item.group.albumID" :active="item.group.favorite" />
               </button>
-              <p>
-                <template v-if="item.group.publishedDate"><time :datetime="item.group.publishedDate">发布于 {{ item.group.publishedDate }}</time> · </template>共 {{ item.group.count }} 项
+              <p class="album-date-count">
+                <template v-if="item.group.publishedDate">
+                  <MdIcon name="calendar" />
+                  <time :datetime="item.group.publishedDate" aria-label="发布日期">{{ item.group.publishedDate.replace(/-/g, '.') }}</time>
+                  <span aria-hidden="true">·</span>
+                </template>
+                <span>{{ item.group.count }}P</span>
               </p>
               <div v-if="item.group.people.length" class="album-related-people">
                 <template v-for="person in item.group.people" :key="person.id">

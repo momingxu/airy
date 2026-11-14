@@ -13,6 +13,7 @@ func TestAlbumPublicationDate(t *testing.T) {
 	scannedAt := time.Date(2026, 11, 5, 18, 30, 0, 0, time.UTC)
 	for _, test := range []struct{ title, want string }{
 		{"[2024-02-29] Album", "2024-02-29"},
+		{"49558720661-2020-01-18_09-47-03-DSC_9059.jpg", "2020-01-18"},
 		{"Album 23-12-31", "2023-12-31"},
 		{"23-2-5 特辑", "2023-02-05"},
 		{"00-02-29", "2000-02-29"},

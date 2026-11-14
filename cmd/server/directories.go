@@ -91,32 +91,45 @@ func createDirectoryHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		directory := database.AssetDirectory{}
-		result := db.WithContext(c.Request.Context()).Where("directory_path = ?", resolved).
-			FirstOrCreate(&directory, database.AssetDirectory{
-				DirectoryName: filepath.Base(resolved),
-				DirectoryPath: resolved,
-				AlbumDepth:    albumDepth,
-			})
-		if result.Error != nil {
+		roots, err := scanner.ResourceRootsForAlbumDepth(c.Request.Context(), resolved, albumDepth)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "读取相册目录失败：" + err.Error()})
+			return
+		}
+		if len(roots) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "所选层级下没有相册目录，请检查路径和相册深度"})
+			return
+		}
+		items := make([]directoryResponse, 0, len(roots))
+		var created int64
+		err = db.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+			for _, root := range roots {
+				var directory database.AssetDirectory
+				result := tx.Where("directory_path = ?", root).FirstOrCreate(&directory, database.AssetDirectory{
+					DirectoryName: filepath.Base(root), DirectoryPath: root, AlbumDepth: 1,
+				})
+				if result.Error != nil {
+					return result.Error
+				}
+				created += result.RowsAffected
+				items = append(items, directoryResponse{
+					ID: directory.ID, Name: directory.DirectoryName, Path: directory.DirectoryPath,
+					AlbumDepth: normalizedAlbumDepth(directory.AlbumDepth), ScanStatus: directory.ScanStatus,
+					LastScannedAt: directory.LastScannedAt, ScanError: directory.ScanError,
+					AutomationDisabled: directory.AutomationDisabled,
+				})
+			}
+			return nil
+		})
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "添加资源文件夹失败"})
 			return
 		}
-
-		code := http.StatusCreated
-		if result.RowsAffected == 0 {
-			code = http.StatusOK
+		code := http.StatusOK
+		if created > 0 {
+			code = http.StatusCreated
 		}
-		c.JSON(code, gin.H{"directory": directoryResponse{
-			ID:                 directory.ID,
-			Name:               directory.DirectoryName,
-			Path:               directory.DirectoryPath,
-			AlbumDepth:         normalizedAlbumDepth(directory.AlbumDepth),
-			ScanStatus:         directory.ScanStatus,
-			LastScannedAt:      directory.LastScannedAt,
-			ScanError:          directory.ScanError,
-			AutomationDisabled: directory.AutomationDisabled,
-		}})
+		c.JSON(code, gin.H{"directory": items[0], "directories": items, "created": created, "existing": int64(len(items)) - created})
 	}
 }
 

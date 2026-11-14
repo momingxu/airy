@@ -48,6 +48,38 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && (
+              url.pathname === '/api/favorites/photos'
+              || (url.pathname === '/api/gallery' && url.searchParams.get('favorites') === 'true')
+            ),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'airy-favorites-api-v1',
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60, purgeOnQuotaError: true },
+            },
+          },
+          {
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && /^\/api\/media\/\d+\/thumbnail$/.test(url.pathname)
+              && url.searchParams.get('favorite_cache') === '1',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'airy-favorites-thumbnails-v1',
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 1000, maxAgeSeconds: 30 * 24 * 60 * 60, purgeOnQuotaError: true },
+            },
+          },
+          {
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && /^\/api\/media\/\d+\/original$/.test(url.pathname)
+              && url.searchParams.get('favorite_cache') === '1',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'airy-favorites-images-v1',
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 128, maxAgeSeconds: 7 * 24 * 60 * 60, purgeOnQuotaError: true },
+            },
+          },
+          {
             urlPattern: /\/api\//,
             handler: 'NetworkOnly',
           },

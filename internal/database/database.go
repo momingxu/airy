@@ -73,6 +73,14 @@ func Migrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	for _, column := range []string{"image_count", "video_count"} {
+		if err := dropColumnIfExists(db, &Album{}, "albums", column); err != nil {
+			return err
+		}
+	}
+	if err := RefreshAlbumCounts(db, nil); err != nil {
+		return err
+	}
 	if err := backfillAlbumPublicationDates(db); err != nil {
 		return err
 	}

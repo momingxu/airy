@@ -4,6 +4,7 @@ import { computed } from 'vue'
 const props = defineProps<{ name: string }>()
 
 const paths: Record<string, string[]> = {
+  calendar: ['M7 2h2v2h6V2h2v2h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3V2ZM4 10v10h16V10H4Zm0-4v2h16V6H4Zm2 6h4v4H6v-4Z'],
   zoomIn: ['M9 2a7 7 0 1 0 4.9 12L20 20l1.4-1.4-6.1-6.1A7 7 0 0 0 9 2Zm0 2a5 5 0 1 1 0 10A5 5 0 0 1 9 4Zm-1 2v2H6v2h2v2h2v-2h2V8h-2V6H8Z'],
   zoomOut: ['M9 2a7 7 0 1 0 4.9 12L20 20l1.4-1.4-6.1-6.1A7 7 0 0 0 9 2Zm0 2a5 5 0 1 1 0 10A5 5 0 0 1 9 4Zm-3 4v2h6V8H6Z'],
   photo: [

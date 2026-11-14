@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -28,6 +29,10 @@ func TestDirectoryManagementHandlers(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	root := t.TempDir()
+	resourcePath := filepath.Join(root, "Series")
+	if err := os.MkdirAll(filepath.Join(resourcePath, "Album"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	router := newRouter(db, "sqlite", nil, nil, false)
 	body, _ := json.Marshal(map[string]any{"path": root, "album_depth": 2})
 	request := httptest.NewRequest(http.MethodPost, "/api/directories", bytes.NewReader(body))
@@ -44,14 +49,14 @@ func TestDirectoryManagementHandlers(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
-	if created.Directory.ID == 0 || created.Directory.Path != root || created.Directory.AlbumDepth != 2 {
+	if created.Directory.ID == 0 || created.Directory.Path != resourcePath || created.Directory.Name != "Series" || created.Directory.AlbumDepth != 1 {
 		t.Fatalf("unexpected created directory: %+v", created.Directory)
 	}
 
 	album := database.Album{
 		DirectoryID: created.Directory.ID,
 		AlbumName:   "Album",
-		AlbumPath:   filepath.Join(root, "Album"),
+		AlbumPath:   filepath.Join(resourcePath, "Album"),
 		ScanStatus:  true,
 	}
 	if err := db.Create(&album).Error; err != nil {

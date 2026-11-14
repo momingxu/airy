@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { isWheelZoomModifier, matchesWheelZoom, wheelZoomLabels, type WheelZoomModifier } from './utils/wheelZoom'
+import { clearFavoriteCache, favoritePhoto } from './utils/favoriteCache'
+import { clearOfflineSession } from './utils/offlineSession'
 import LightboxSlides from './components/LightboxSlides.vue'
 import FavoriteIcon from "./components/FavoriteIcon.vue"
 import AlbumCsvActions from "./components/AlbumCsvActions.vue"
@@ -20,6 +22,7 @@ import {
   fetchScanSchedule,
   scanAllDirectories,
   scanDirectory,
+  refreshAlbumPublicationDates,
   updateDirectorySettings,
   updateScanSchedule,
   type ResourceDirectory,
@@ -101,6 +104,10 @@ const searchShortcutDraft = ref(defaultSearchShortcut)
 const shortcutMessage = ref('')
 const content = ref<HTMLElement | null>(null)
 const apiState = ref<ApiState>('loading')
+const offlineMode = ref(false)
+const reconnecting = ref(false)
+const networkToast = ref('')
+let networkToastTimer: number | undefined
 const lightbox = ref<HTMLDialogElement | null>(null)
 const personCreateDialog = ref<HTMLDialogElement | null>(null)
 const personEditDialog = ref<HTMLDialogElement | null>(null)
@@ -157,6 +164,9 @@ const scanSchedule = ref<ScanSchedule>({ enabled: false, scan_time: '01:00', tim
 const globalScanStarting = ref(false)
 const scanControlChanging = ref(false)
 const scanScheduleSaving = ref(false)
+const directoryAddMessage = ref('')
+const albumDatesUpdating = ref(false)
+const albumDatesMessage = ref('')
 const directorySettingsSaving = ref<Set<number>>(new Set())
 const albumDepthOptions = Array.from({ length: 10 }, (_, index) => index + 1)
 const people = ref<PersonItem[]>([])
@@ -419,6 +429,7 @@ function viewFromPath(pathname: string): ViewName {
 }
 
 function setView(view: ViewName, updateHistory = true) {
+  if (offlineMode.value && view !== 'favorites' && view !== 'settings') view = 'favorites'
   if (view === 'people') {
     void showPeopleList(updateHistory)
     return
@@ -549,11 +560,12 @@ function scanStageDetail(scan: ScanStatus | null) {
 
 function scheduleDirectoryRefresh(delay = 5000) {
   window.clearTimeout(directoryRefreshTimer)
-  if (document.visibilityState === 'hidden') return
+  if (offlineMode.value || document.visibilityState === 'hidden') return
   directoryRefreshTimer = window.setTimeout(() => void loadDirectories(true), delay)
 }
 
 async function loadDirectories(silent = false) {
+  if (offlineMode.value) return
   if (!silent) directoriesLoading.value = true
   directoryError.value = ''
   try {
@@ -575,12 +587,14 @@ async function loadDirectories(silent = false) {
 }
 
 async function addDirectory() {
+  directoryAddMessage.value = ''
   const path = directoryPath.value.trim()
   if (!path || directorySaving.value) return
   directorySaving.value = true
   directoryError.value = ''
   try {
-    await createDirectory(path, directoryAlbumDepth.value)
+    const result = await createDirectory(path, directoryAlbumDepth.value)
+    directoryAddMessage.value = `已添加 ${result.created} 个资源库${result.existing ? `，${result.existing} 个已存在` : ''}。`
     directoryPath.value = ''
     directoryAlbumDepth.value = 1
     await loadDirectories(true)
@@ -588,6 +602,29 @@ async function addDirectory() {
     directoryError.value = error instanceof Error ? error.message : '添加资源文件夹失败'
   } finally {
     directorySaving.value = false
+  }
+}
+
+async function updateAllAlbumDates() {
+  if (albumDatesUpdating.value) return
+  const confirmed = await requestConfirmation({
+    title: '更新全部相册发布日期',
+    message: '按相册名称、图片文件名、最早图片修改日期的顺序，重新提取所有资源库的相册发布日期；无日期依据时使用今天。将覆盖已有日期，包括 CSV 修改值。',
+    confirmLabel: '更新全部发布日期',
+  })
+  if (!confirmed) return
+  albumDatesUpdating.value = true
+  albumDatesMessage.value = ''
+  try {
+    const result = await refreshAlbumPublicationDates()
+    albumDatesMessage.value = `已检查 ${result.total} 个相册，更新 ${result.updated} 个发布日期。`
+    await clearFavoriteCache()
+    groups.value = []
+    hasMoreAlbums.value = true
+  } catch (error) {
+    albumDatesMessage.value = error instanceof Error ? error.message : '更新发布日期失败'
+  } finally {
+    albumDatesUpdating.value = false
   }
 }
 
@@ -1191,6 +1228,14 @@ async function openPerson(personID: number, updateHistory = true) {
 }
 
 function handlePopState() {
+  if (offlineMode.value) {
+    apiState.value = 'offline'
+    activeView.value = 'favorites'
+    window.history.replaceState({}, '', viewPaths.favorites)
+    void loadFavoriteGallery(true)
+    return
+  }
+
   if (window.location.pathname === '/trash' || window.location.pathname === '/trash/') {
     window.history.replaceState({}, '', '/')
   }
@@ -1647,11 +1692,12 @@ function createFavoritePhotoGroup(photos: Photo[]): PhotoGroup {
     canFavorite: false,
     people: [],
     series: [],
-    photos,
+    photos: photos.map(favoritePhoto),
   }
 }
 
 async function setAlbumFavorite(albumID: number, currentFavorite: boolean, mediaCount: number) {
+  if (offlineMode.value) { favoriteGalleryError.value = '离线时仅支持浏览，联网后可修改收藏。'; return }
   if (favoriteSavingAlbumIDs.value.has(albumID)) return
   favoriteSavingAlbumIDs.value = new Set([...favoriteSavingAlbumIDs.value, albumID])
   const favorite = !currentFavorite
@@ -1692,6 +1738,7 @@ function toggleAlbumFavorite(group: PhotoGroup) {
 }
 
 async function togglePhotoFavorite(photo: Photo) {
+  if (offlineMode.value) { favoriteGalleryError.value = '离线时仅支持浏览，联网后可修改收藏。'; return }
   if (favoriteSavingPhotoIDs.value.has(photo.id)) return
   const photoID = Number(photo.id)
   if (!Number.isSafeInteger(photoID) || photoID <= 0) return
@@ -1842,6 +1889,7 @@ async function stepPhoto(direction: number) {
     return
   }
   lightboxSwitchPending = true
+  window.clearTimeout(slideshowTimer)
   const generation = ++lightboxSwitchGeneration
   const nextIndex = (previewIndex.value + step + previewPhotos.value.length) % previewPhotos.value.length
   const photo = previewPhotos.value[nextIndex]
@@ -1878,16 +1926,20 @@ async function stepPhoto(direction: number) {
 }
 
 function finishLightboxSlide() {
+  // Cool down from completion, not from the wheel event before a slow decode.
+  wheelLastSwitchAt = performance.now()
   lightboxSwitchPending = false
   const direction = queuedLightboxDirection
   queuedLightboxDirection = 0
   if (direction) void stepPhoto(direction)
+  else scheduleSlideshow()
 }
 
 function scheduleSlideshow() {
   window.clearTimeout(slideshowTimer)
   if (
     !slideshowPlaying.value ||
+    lightboxSwitchPending ||
     document.hidden ||
     !lightbox.value?.open ||
     currentPhoto.value?.mediaType === 'video'
@@ -1905,10 +1957,33 @@ function handleVideoEnded() {
   if (slideshowPlaying.value) stepPhoto(1)
 }
 
+function enterOfflineMode() {
+  if (authState.value !== 'authenticated') return
+  offlineMode.value = true
+  apiState.value = 'offline'
+  window.clearTimeout(directoryRefreshTimer)
+  if (activeView.value !== 'favorites') setView('favorites')
+}
+
+async function reconnect() {
+  if (reconnecting.value || authState.value !== 'authenticated') return
+  reconnecting.value = true
+  try {
+    const status = await fetchAuthStatus()
+    if (status.offline) return
+    if (!status.authenticated || !status.configured) { handleUnauthorized(); return }
+    offlineMode.value = false
+    apiState.value = 'online'
+    await Promise.allSettled([loadFavoriteGallery(true), loadDirectories(true), loadScanSchedule()])
+  } catch { /* Keep cached content available while the network is unreachable. */ }
+  finally { reconnecting.value = false }
+}
+
 function handleVisibilityChange() {
   scheduleSlideshow()
   if (document.visibilityState === 'visible' && authState.value === 'authenticated') {
-    void loadDirectories(true)
+    if (offlineMode.value) void reconnect()
+    else void loadDirectories(true)
   } else {
     window.clearTimeout(directoryRefreshTimer)
   }
@@ -1920,7 +1995,8 @@ function handleLightboxWheel(event: WheelEvent) {
     lightboxSlides.value?.zoomWithWheel(event)
     return
   }
-  if (lightboxZoomed.value) return
+  // Wheel input is never queued while decoding or animating a slide.
+  if (lightboxZoomed.value || lightboxSwitchPending || lightboxClosing) return
   const rawDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX
   const deltaUnit = event.deltaMode === WheelEvent.DOM_DELTA_LINE
     ? 16
@@ -1932,8 +2008,7 @@ function handleLightboxWheel(event: WheelEvent) {
 
   const now = performance.now()
   if (now - wheelLastSwitchAt < 500) return
-  wheelLastSwitchAt = now
-  stepPhoto(delta > 0 ? 1 : -1)
+  void stepPhoto(delta > 0 ? 1 : -1)
 }
 
 function closeFromBackdrop(event: MouseEvent) {
@@ -2016,19 +2091,28 @@ async function loadFavoriteGallery(reset = false) {
 
   try {
     const offset = reset ? 0 : favoriteGroups.value.length
-    const [response, photoGroup] = await Promise.all([
+    const [albumsResult, photosResult] = await Promise.allSettled([
       fetchGallery(offset, reset ? 5 : 10, true),
       reset ? loadFavoritePhotoGroup() : Promise.resolve(undefined),
     ])
-    const incoming = response.albums.map(toGroup)
-    favoriteGroups.value = reset ? incoming : [...favoriteGroups.value, ...incoming]
-    if (reset && photoGroup !== undefined) {
-      favoritePhotoGroup.value = photoGroup
-      favoritePhotoCount.value = photoGroup?.count ?? 0
+    if (albumsResult.status === 'fulfilled') {
+      const response = albumsResult.value
+      const incoming = response.albums.map(album => {
+        const group = toGroup(album)
+        return { ...group, photos: group.photos.map(favoritePhoto) }
+      })
+      favoriteGroups.value = reset ? incoming : [...favoriteGroups.value, ...incoming]
+      favoriteAlbumCount.value = response.pagination.total
+      favoriteMediaCount.value = response.total_media
+      favoriteHasMoreAlbums.value = response.pagination.has_more
+    } else favoriteHasMoreAlbums.value = false
+    if (reset && photosResult.status === 'fulfilled' && photosResult.value !== undefined) {
+      favoritePhotoGroup.value = photosResult.value
+      favoritePhotoCount.value = photosResult.value?.count ?? 0
     }
-    favoriteAlbumCount.value = response.pagination.total
-    favoriteMediaCount.value = response.total_media
-    favoriteHasMoreAlbums.value = response.pagination.has_more
+    if (albumsResult.status === 'rejected' || photosResult.status === 'rejected') {
+      favoriteGalleryError.value = offlineMode.value ? '部分收藏内容尚未缓存，联网后可继续加载。' : '部分收藏内容加载失败，请重试。'
+    }
   } catch (error) {
     favoriteGalleryError.value = error instanceof Error ? error.message : '收藏相册加载失败'
   } finally {
@@ -2045,7 +2129,12 @@ async function loadFavoritePhotoGroup(): Promise<PhotoGroup | null> {
   let total = 0
 
   do {
-    const response = await fetchFavoritePhotos(offset)
+    let response
+    try { response = await fetchFavoritePhotos(offset) }
+    catch (error) {
+      if (offlineMode.value && media.length) break
+      throw error
+    }
     total = response.pagination.total
     media.push(...response.media)
     offset += response.media.length
@@ -2068,6 +2157,7 @@ function maybeLoadMore() {
   if (
     activeView.value === 'favorites'
     && favoriteHasMoreAlbums.value
+    && !favoriteGalleryError.value
     && !favoriteGalleryLoading.value
     && !favoriteGalleryLoadingMore.value
   ) {
@@ -2131,6 +2221,7 @@ async function submitAuthentication() {
   try {
     if (authState.value === 'setup') await setupAccount(username, authPassword.value)
     else await login(username, authPassword.value)
+    await clearFavoriteCache({ media: true })
     window.location.reload()
   } catch (error) {
     authError.value = error instanceof Error ? error.message : '登录失败'
@@ -2140,6 +2231,9 @@ async function submitAuthentication() {
 }
 
 function handleUnauthorized() {
+  clearOfflineSession()
+  offlineMode.value = false
+  void clearFavoriteCache({ media: true })
   if (authState.value !== 'authenticated') return
   closeLightbox()
   gallerySearchDialog.value?.close()
@@ -2192,6 +2286,7 @@ async function signOut() {
   try {
     await logout()
   } finally {
+    await clearFavoriteCache({ media: true })
     window.location.assign('/')
   }
 }
@@ -2320,6 +2415,13 @@ function handleKeyup(event: KeyboardEvent) {
   }
 }
 
+watch(offlineMode, (offline, previous) => {
+  if (authState.value !== 'authenticated') return
+  window.clearTimeout(networkToastTimer)
+  networkToast.value = offline ? '离线浏览：仅显示已缓存的收藏，未缓存的图片和视频需要联网。' : previous ? '已恢复连接' : ''
+  networkToastTimer = window.setTimeout(() => { networkToast.value = '' }, offline ? 5000 : 3000)
+})
+
 watch(wheelZoomModifier, value => localStorage.setItem('airy-wheel-zoom-modifier', value))
 
 watch(theme, (value) => {
@@ -2384,23 +2486,36 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', handleVisibilityChange)
   window.addEventListener('popstate', handlePopState)
   window.addEventListener('airy:unauthorized', handleUnauthorized)
+  window.addEventListener('offline', enterOfflineMode)
+  window.addEventListener('online', reconnect)
 
   try {
     const status = await fetchAuthStatus()
     if (!status.configured) {
+      await clearFavoriteCache({ media: true })
       authState.value = 'setup'
       return
     }
     if (!status.authenticated) {
+      await clearFavoriteCache({ media: true })
       authState.value = 'login'
       return
     }
+    offlineMode.value = status.offline === true
     authState.value = 'authenticated'
     authUsername.value = status.username ?? ''
     accountUsername.value = authUsername.value
   } catch (error) {
     authState.value = 'login'
     authError.value = error instanceof Error ? error.message : '无法读取登录状态'
+    return
+  }
+
+  if (offlineMode.value) {
+    apiState.value = 'offline'
+    activeView.value = 'favorites'
+    window.history.replaceState({}, '', viewPaths.favorites)
+    await loadFavoriteGallery(true)
     return
   }
 
@@ -2452,11 +2567,14 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.clearTimeout(networkToastTimer)
   document.removeEventListener('keydown', handleKeydown)
   document.removeEventListener('keyup', handleKeyup)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('popstate', handlePopState)
   window.removeEventListener('airy:unauthorized', handleUnauthorized)
+  window.removeEventListener('offline', enterOfflineMode)
+  window.removeEventListener('online', reconnect)
   window.clearTimeout(directoryRefreshTimer)
   window.clearTimeout(slideshowTimer)
   window.clearTimeout(newPersonSearchTimer)
@@ -2589,6 +2707,9 @@ onBeforeUnmount(() => {
     </aside>
 
     <main ref="content" class="content" :class="{ 'content-empty': showOnlyEmptyState }" @scroll.passive="maybeLoadMore">
+      <Transition name="network-toast">
+        <div v-if="networkToast" class="network-toast" role="status" aria-live="polite">{{ networkToast }}</div>
+      </Transition>
       <header v-if="!showOnlyEmptyState" class="page-header">
         <Transition name="header-copy" mode="out-in">
           <div :key="activeView">
@@ -2807,88 +2928,107 @@ onBeforeUnmount(() => {
       </section>
 
       <section v-else-if="activeView === 'folders'" class="resource-manager">
-        <form class="add-folder-card" @submit.prevent="addDirectory">
-          <span class="folder-illustration" aria-hidden="true">
-            <MdIcon name="createFolder" />
-          </span>
-          <div class="add-folder-copy">
-            <h2>添加资源文件夹</h2>
-            <p>填写服务器上的绝对路径，并选择作为相簿的子目录层级。</p>
-          </div>
-          <div class="folder-input-row">
-            <input
-              v-model="directoryPath"
-              type="text"
-              name="directory-path"
-              placeholder="/mnt/photos/library"
-              autocomplete="off"
-              :disabled="directorySaving"
-              aria-label="资源文件夹绝对路径"
-            />
-            <label class="album-depth-input">
-              <span>相册深度</span>
-              <select v-model.number="directoryAlbumDepth" :disabled="directorySaving" aria-label="相册目录深度">
-                <option v-for="depth in albumDepthOptions" :key="depth" :value="depth">{{ depth }} 级</option>
-              </select>
-            </label>
-            <button class="primary-action" type="submit" :disabled="!directoryPath.trim() || directorySaving">
-              {{ directorySaving ? '正在添加…' : '添加文件夹' }}
-            </button>
-          </div>
-          <p class="folder-safety">添加后不会自动扫描，也不会修改或移动原始文件。</p>
-        </form>
+        <div class="resource-top-panels">
+          <div class="resource-add-panel">
+            <form class="add-folder-card" @submit.prevent="addDirectory">
+              <span class="folder-illustration" aria-hidden="true">
+                <MdIcon name="createFolder" />
+              </span>
+              <div class="add-folder-copy">
+                <h2>添加资源文件夹</h2>
+                <p>填写服务器上的绝对路径，选择相册层级；相册的上一级目录将分别添加为资源库，以文件夹名命名。</p>
+              </div>
+              <div class="folder-input-row">
+                <input
+                  v-model="directoryPath"
+                  type="text"
+                  name="directory-path"
+                  placeholder="/mnt/photos/library"
+                  autocomplete="off"
+                  :disabled="directorySaving"
+                  aria-label="资源文件夹绝对路径"
+                />
+                <label class="album-depth-input">
+                  <span>相册深度</span>
+                  <select v-model.number="directoryAlbumDepth" :disabled="directorySaving" aria-label="相册目录深度">
+                    <option v-for="depth in albumDepthOptions" :key="depth" :value="depth">{{ depth }} 级</option>
+                  </select>
+                </label>
+                <button class="primary-action" type="submit" :disabled="!directoryPath.trim() || directorySaving">
+                  {{ directorySaving ? '正在添加…' : '添加文件夹' }}
+                </button>
+              </div>
+              <p class="folder-safety">例如选择第 2 级：/写真/系列A/相册 → 资源库“系列A”。添加后不会自动扫描，也不会修改或移动原始文件。</p>
+            </form>
 
-        <p v-if="directoryError" class="inline-error folder-error" role="alert">{{ directoryError }}</p>
+            <p v-if="directoryAddMessage" class="directory-dates-message" role="status">{{ directoryAddMessage }}</p>
+            <p v-if="directoryError" class="inline-error folder-error" role="alert">{{ directoryError }}</p>
 
-        <div class="folder-manager-toolbar">
-          <div class="global-scan-copy">
-            <b>全局相册 CSV</b>
-            <span>导出全部资源库的相册，编辑后按 ID 批量导入。</span>
           </div>
-          <AlbumCsvActions @applied="loadDirectories(true)" />
-        </div>
+          <div class="resource-tools-panel">
+            <div class="folder-manager-toolbar">
+              <div class="global-scan-copy">
+                <b>全局相册 CSV</b>
+                <span>导出全部资源库的相册，编辑后按 ID 批量导入。</span>
+              </div>
+              <AlbumCsvActions @applied="loadDirectories(true)" />
+            </div>
 
-        <div v-if="directories.length" class="folder-manager-toolbar">
-          <div class="global-scan-copy">
-            <b>全局图库扫描</b>
-            <span>每天夜间 01:00，只扫描未关闭监听和扫描的资源文件夹。</span>
-            <small v-if="scanSchedule.enabled && scanSchedule.next_scan_at">
-              下次扫描：{{ formatScheduledTime(scanSchedule.next_scan_at) }}（北京时间）
-            </small>
-          </div>
-          <div class="global-scan-settings">
-            <label class="watch-setting">
-              <input
-                type="checkbox"
-                :checked="scanSchedule.enabled"
-                :disabled="scanScheduleSaving"
-                @change="changeScanScheduleEnabled"
-              />
-              <span class="switch-track" aria-hidden="true"><i></i></span>
-              <span>定时扫描</span>
-            </label>
-            <span class="daily-schedule-time">每天 {{ scanSchedule.scan_time }} · 北京时间</span>
-          </div>
-          <div class="global-scan-actions">
-            <template v-if="directoryScanRunning">
-              <button
-                class="cancel-scan-button"
-                type="button"
-                :disabled="scanControlChanging || activeScan?.canceling"
-                @click="cancelActiveScan"
-              >
-                {{ activeScan?.canceling ? '正在取消…' : '取消扫描' }}
+            <div class="folder-manager-toolbar">
+              <div class="global-scan-copy">
+                <b>全局相册发布日期</b>
+                <span>重新提取所有资源库的相册发布日期，覆盖已有日期。</span>
+                <small v-if="albumDatesMessage" role="status">{{ albumDatesMessage }}</small>
+              </div>
+              <button class="primary-action" type="button" :disabled="!directories.length || albumDatesUpdating || directoryScanRunning" @click="updateAllAlbumDates">
+                {{ albumDatesUpdating ? '更新中…' : '更新发布日期' }}
               </button>
-            </template>
-            <button
-              v-else
-              class="primary-action"
-              type="button"
-              :disabled="globalScanStarting"
-              @click="startGlobalScan"
-            >
-              {{ globalScanStarting ? '正在加入队列…' : '扫描未关闭的文件夹' }}
-            </button>
+            </div>
+
+            <div v-if="directories.length" class="folder-manager-toolbar global-scan-toolbar">
+              <div class="global-scan-copy">
+                <b>全局图库扫描</b>
+                <span>每天夜间 01:00，只扫描未关闭监听和扫描的资源文件夹。</span>
+                <small v-if="scanSchedule.enabled && scanSchedule.next_scan_at">
+                  下次扫描：{{ formatScheduledTime(scanSchedule.next_scan_at) }}（北京时间）
+                </small>
+              </div>
+              <div class="global-scan-settings">
+                <label class="watch-setting">
+                  <input
+                    type="checkbox"
+                    :checked="scanSchedule.enabled"
+                    :disabled="scanScheduleSaving"
+                    @change="changeScanScheduleEnabled"
+                  />
+                  <span class="switch-track" aria-hidden="true"><i></i></span>
+                  <span>定时扫描</span>
+                </label>
+                <span class="daily-schedule-time">每天 {{ scanSchedule.scan_time }} · 北京时间</span>
+              </div>
+              <div class="global-scan-actions">
+                <template v-if="directoryScanRunning">
+                  <button
+                    class="cancel-scan-button"
+                    type="button"
+                    :disabled="scanControlChanging || activeScan?.canceling"
+                    @click="cancelActiveScan"
+                  >
+                    {{ activeScan?.canceling ? '正在取消…' : '取消扫描' }}
+                  </button>
+                </template>
+                <button
+                  v-else
+                  class="primary-action"
+                  type="button"
+                  :disabled="globalScanStarting"
+                  @click="startGlobalScan"
+                >
+                  {{ globalScanStarting ? '正在加入队列…' : '扫描未关闭的文件夹' }}
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -2905,9 +3045,6 @@ onBeforeUnmount(() => {
             <div class="folder-card-main">
               <div class="folder-title-row">
                 <h2>{{ directory.name }}</h2>
-                <span :class="['folder-status', { scanning: directory.scanning || directory.queued, ready: directory.scan_status && !directory.scanning && !directory.queued, failed: directory.scan_error }]">
-                  {{ directory.scanning ? scanStageLabel(activeScan?.stage) : directory.queued ? '等待扫描' : directory.scan_error ? '扫描失败' : directory.scan_status ? '已就绪' : '待扫描' }}
-                </span>
                 <span v-if="directory.automation_disabled" class="folder-status excluded">已排除</span>
                 <span v-else :class="['folder-status', 'watching', { failed: directory.watch_error }]">
                   {{ directory.watch_error ? '监听异常' : directory.watching ? '监听中' : '正在启用监听' }}
@@ -2933,11 +3070,14 @@ onBeforeUnmount(() => {
                 </label>
                 <span v-if="directorySettingsSaving.has(directory.id)" class="settings-saving">保存中…</span>
               </div>
-              <p v-if="directory.watch_error" class="folder-scan-error">监听错误：{{ directory.watch_error }}</p>
-              <p v-if="directory.scan_error" class="folder-scan-error">{{ directory.scan_error }}</p>
-              <p v-if="directory.scanning" class="scan-stage-copy">{{ scanStageDetail(activeScan) }}</p>
-              <div v-if="directory.scanning" class="scan-progress" aria-live="polite">
-                <span></span>
+              <div class="folder-scan-feedback" aria-live="polite">
+                <span :class="['folder-status', { scanning: directory.scanning || directory.queued, ready: directory.scan_status && !directory.scanning && !directory.queued, failed: directory.scan_error }]">
+                  {{ directory.scanning ? scanStageLabel(activeScan?.stage) : directory.queued ? '等待扫描' : directory.scan_error ? '扫描失败' : directory.scan_status ? '已就绪' : '待扫描' }}
+                </span>
+                <p v-if="directory.watch_error" class="folder-scan-error">监听错误：{{ directory.watch_error }}</p>
+                <p v-if="directory.scan_error" class="folder-scan-error">{{ directory.scan_error }}</p>
+                <p v-if="directory.scanning" class="scan-stage-copy">{{ scanStageDetail(activeScan) }}</p>
+                <div v-if="directory.scanning" class="scan-progress"><span></span></div>
               </div>
             </div>
             <div class="folder-actions">

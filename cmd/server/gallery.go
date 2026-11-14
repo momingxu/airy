@@ -254,11 +254,14 @@ func albumMediaHandler(db *gorm.DB) gin.HandlerFunc {
 }
 
 func loadAlbumResponse(c *gin.Context, db *gorm.DB, album database.Album, offset, limit int) (albumResponse, error) {
-	var count int64
+	count := album.MediaCount
 	query := db.WithContext(c.Request.Context()).Model(&database.Photo{}).
 		Where("album_id = ? AND status = ?", album.ID, "active")
-	if err := query.Count(&count).Error; err != nil {
-		return albumResponse{}, err
+	// Unscanned records created outside the scanner may not have persisted counts yet.
+	if album.CountsUpdatedAt == nil {
+		if err := query.Count(&count).Error; err != nil {
+			return albumResponse{}, err
+		}
 	}
 
 	var photos []database.Photo

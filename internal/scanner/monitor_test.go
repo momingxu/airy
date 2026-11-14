@@ -105,6 +105,9 @@ func TestDirectoryMonitorScansAfterFilesystemChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Only albums containing media are published after a watched change.
+	writeJPEG(t, filepath.Join(albumPath, "image.jpg"), 40, 30)
+
 	deadline = time.Now().Add(6 * time.Second)
 	for time.Now().Before(deadline) {
 		var count int64

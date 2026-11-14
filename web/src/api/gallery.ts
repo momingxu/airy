@@ -1,3 +1,5 @@
+import { clearFavoriteCache } from '../utils/favoriteCache'
+
 export interface MediaItem {
   id: number
   name: string
@@ -75,12 +77,14 @@ export function fetchGallery(offset = 0, limit = 10, favoritesOnly = false, sear
   return request<GalleryResponse>(`/api/gallery?${query}`)
 }
 
-export function updateAlbumFavorite(albumID: number, favorite: boolean) {
-  return request<{ id: number; favorite: boolean }>(`/api/albums/${albumID}/favorite`, {
+export async function updateAlbumFavorite(albumID: number, favorite: boolean) {
+  const result = await request<{ id: number; favorite: boolean }>(`/api/albums/${albumID}/favorite`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ favorite }),
   })
+  await clearFavoriteCache({ media: !favorite })
+  return result
 }
 
 export function fetchFavoritePhotos(offset = 0, limit = 500) {
@@ -88,10 +92,12 @@ export function fetchFavoritePhotos(offset = 0, limit = 500) {
   return request<FavoritePhotosResponse>(`/api/favorites/photos?${query}`)
 }
 
-export function updatePhotoFavorite(photoID: number, favorite: boolean) {
-  return request<{ id: number; favorite: boolean }>(`/api/media/${photoID}/favorite`, {
+export async function updatePhotoFavorite(photoID: number, favorite: boolean) {
+  const result = await request<{ id: number; favorite: boolean }>(`/api/media/${photoID}/favorite`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ favorite }),
   })
+  await clearFavoriteCache({ photoID: favorite ? undefined : photoID })
+  return result
 }

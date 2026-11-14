@@ -397,7 +397,6 @@ func (s *Scanner) scan(ctx context.Context, requestedRoot string, progress func(
 
 	albums := make([]database.Album, 0, len(albumPaths))
 	albumIDs := make([]uint, 0, len(albumPaths))
-	newAlbumIDs := make(map[uint]bool)
 	for _, albumPath := range albumPaths {
 		if err := ctx.Err(); err != nil {
 			return stats, err
@@ -415,7 +414,6 @@ func (s *Scanner) scan(ctx context.Context, requestedRoot string, progress func(
 		if result.Error != nil {
 			return stats, fmt.Errorf("save album %q: %w", albumName, result.Error)
 		}
-		newAlbumIDs[album.ID] = result.RowsAffected > 0 || album.PublishedDate == ""
 		// Existing titles may have been edited through CSV; keep them on rescan.
 		if album.DirectoryID != directory.ID {
 			if err := s.db.WithContext(ctx).Model(&album).Updates(map[string]any{
@@ -453,6 +451,11 @@ func (s *Scanner) scan(ctx context.Context, requestedRoot string, progress func(
 		Update("status", AssetStatusMissing).Error; err != nil {
 		return stats, fmt.Errorf("mark missing albums: %w", err)
 	}
+	if len(missingAlbumIDs) > 0 {
+		if err := database.RefreshAlbumCounts(s.db.WithContext(ctx), missingAlbumIDs); err != nil {
+			return stats, fmt.Errorf("refresh missing album counts: %w", err)
+		}
+	}
 	if err := database.RefreshEntityImageIDsForAlbumIDs(s.db.WithContext(ctx), missingAlbumIDs); err != nil {
 		return stats, fmt.Errorf("refresh missing album covers: %w", err)
 	}
@@ -478,16 +481,15 @@ func (s *Scanner) scan(ctx context.Context, requestedRoot string, progress func(
 		if err != nil {
 			return stats, fmt.Errorf("scan album %q: %w", album.AlbumName, err)
 		}
-		if newAlbumIDs[album.ID] {
-			date, err := database.ResolveAlbumPublicationDate(s.db.WithContext(ctx), album, startedAt)
-			if err != nil {
-				return stats, fmt.Errorf("resolve album publication date: %w", err)
-			}
-			if err := s.db.WithContext(ctx).Model(&database.Album{}).
-				Where("id = ? AND album_name = ? AND published_date = ?", album.ID, album.AlbumName, album.PublishedDate).
-				UpdateColumn("published_date", date).Error; err != nil {
-				return stats, fmt.Errorf("save album publication date: %w", err)
-			}
+		// Every completed media scan re-extracts the publication date.
+		date, err := database.ResolveAlbumPublicationDate(s.db.WithContext(ctx), album, startedAt)
+		if err != nil {
+			return stats, fmt.Errorf("resolve album publication date: %w", err)
+		}
+		if err := s.db.WithContext(ctx).Model(&database.Album{}).
+			Where("id = ? AND album_name = ? AND published_date = ?", album.ID, album.AlbumName, album.PublishedDate).
+			UpdateColumn("published_date", date).Error; err != nil {
+			return stats, fmt.Errorf("save album publication date: %w", err)
 		}
 		stats.Files += albumStats.Files
 		stats.Images += albumStats.Images
@@ -788,10 +790,15 @@ func (s *Scanner) generateAlbumDerivatives(
 			return fmt.Errorf("save thumbnails for album %q: %w", album.AlbumName, err)
 		}
 	}
+	if err := database.RefreshAlbumCounts(s.db.WithContext(ctx), []uint{album.ID}); err != nil {
+		return fmt.Errorf("refresh album counts %q: %w", album.AlbumName, err)
+	}
+	// A completed scan publishes only albums with active media. Retain empty
+	// album records and associations so adding files can restore them later.
 	if err := s.db.WithContext(ctx).Model(&database.Album{}).
 		Where("id = ?", album.ID).
-		Update("scan_status", true).Error; err != nil {
-		return fmt.Errorf("enable album %q: %w", album.AlbumName, err)
+		Update("scan_status", lastPhotoID != 0).Error; err != nil {
+		return fmt.Errorf("update album publication status %q: %w", album.AlbumName, err)
 	}
 	if err := database.RefreshEntityImageIDsForAlbumIDs(s.db.WithContext(ctx), []uint{album.ID}); err != nil {
 		return fmt.Errorf("refresh album covers for %q: %w", album.AlbumName, err)

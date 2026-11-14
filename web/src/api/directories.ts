@@ -69,7 +69,7 @@ export function fetchDirectories() {
 }
 
 export function createDirectory(path: string, albumDepth = 1) {
-  return request<{ directory: ResourceDirectory }>('/api/directories', {
+  return request<{ directory: ResourceDirectory; directories: ResourceDirectory[]; created: number; existing: number }>('/api/directories', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, album_depth: albumDepth }),
@@ -113,4 +113,8 @@ export function updateDirectorySettings(
 
 export function deleteDirectory(id: number) {
   return request<void>(`/api/directories/${id}`, { method: 'DELETE' })
+}
+
+export function refreshAlbumPublicationDates() {
+  return request<{ total: number; updated: number }>('/api/albums/publication-dates/refresh', { method: 'POST' })
 }

@@ -72,18 +72,19 @@ func TestScanAlbumPublicationDatesAndRescan(t *testing.T) {
 			t.Fatalf("%s: got %s want %s", name, album.PublishedDate, want)
 		}
 	}
-	// Simulate records indexed on an earlier day and verify rescan stability.
+	// A rescan replaces saved dates using current filenames, while preserving edited titles.
 	if err := db.Model(&fallback).Updates(map[string]any{"published_date": "2020-01-02", "album_name": "CSV edited title"}).Error; err != nil {
 		t.Fatal(err)
 	}
+	writeJPEG(t, filepath.Join(root, names[1], "49558720661-2020-01-18_09-47-03-DSC_9059.jpg"), 20, 30)
 	if _, err := service.scan(context.Background(), root, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.First(&fallback, fallback.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if fallback.PublishedDate != "2020-01-02" || fallback.AlbumName != "CSV edited title" {
-		t.Fatal("rescan replaced original publication date")
+	if fallback.PublishedDate != "2020-01-18" || fallback.AlbumName != "CSV edited title" {
+		t.Fatalf("rescan must refresh date and preserve title: %+v", fallback)
 	}
 	var count int64
 	if err := db.Model(&database.Album{}).Count(&count).Error; err != nil {

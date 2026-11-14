@@ -48,6 +48,7 @@ func newRouter(db *gorm.DB, driver string, mediaScanner *scanner.Scanner, mediaS
 	protected.POST("/directories/:id/albums/csv-import", importAlbumCSVHandler(db, true))
 	protected.POST("/directories", createDirectoryHandler(db))
 	protected.PATCH("/directories/:id/settings", updateDirectorySettingsHandler(db, mediaScanner))
+	protected.POST("/albums/publication-dates/refresh", refreshAlbumPublicationDatesHandler(db))
 	protected.POST("/directories/:id/scan", scanDirectoryHandler(db, mediaScanner))
 	protected.DELETE("/directories/:id", deleteDirectoryHandler(db, mediaScanner))
 	protected.GET("/gallery", galleryHandler(db))

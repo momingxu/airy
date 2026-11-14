@@ -1,7 +1,10 @@
+import { clearOfflineSession, readOfflineSession, rememberOfflineSession } from '../utils/offlineSession'
+
 export interface AuthStatus {
   configured: boolean
   authenticated: boolean
   username?: string
+  offline?: boolean
 }
 
 interface UserResponse {
@@ -21,8 +24,24 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export function fetchAuthStatus() {
-  return request<AuthStatus>('/api/auth/status')
+export async function fetchAuthStatus(): Promise<AuthStatus> {
+  let response: Response
+  try {
+    response = await fetch('/api/auth/status', { headers: { Accept: 'application/json' }, cache: 'no-store' })
+  } catch (error) {
+    // Only network failure permits local browsing. A server rejection must win.
+    const saved = readOfflineSession()
+    if (saved) return { configured: true, authenticated: true, username: saved.username, offline: true }
+    throw error
+  }
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) clearOfflineSession()
+    throw new Error(`无法读取登录状态（${response.status}）`)
+  }
+  const status = await response.json() as AuthStatus
+  if (status.configured && status.authenticated) rememberOfflineSession(status.username ?? '')
+  else clearOfflineSession()
+  return status
 }
 
 export function setupAccount(username: string, password: string) {
@@ -41,8 +60,9 @@ export function login(username: string, password: string) {
   })
 }
 
-export function logout() {
-  return request<void>('/api/auth/logout', { method: 'POST' })
+export async function logout() {
+  try { return await request<void>('/api/auth/logout', { method: 'POST' }) }
+  finally { clearOfflineSession() }
 }
 
 export function updateAccount(username: string, currentPassword: string, newPassword: string) {
