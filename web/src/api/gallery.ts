@@ -1,3 +1,4 @@
+import { fetchOfflineFavorites } from '../utils/offlineFavorites'
 import { clearFavoriteCache } from '../utils/favoriteCache'
 
 export interface MediaItem {
@@ -55,7 +56,9 @@ export interface FavoritePhotosResponse {
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const favoriteRead = !init?.method && (url.startsWith('/api/favorites/photos?')
+    || (url.startsWith('/api/gallery?') && new URLSearchParams(url.split('?')[1]).get('favorites') === 'true'))
+  const response = favoriteRead ? await fetchOfflineFavorites(url) : await fetch(url, {
     ...init,
     headers: { Accept: 'application/json', ...init?.headers },
   })

@@ -62,7 +62,7 @@ button:not(:disabled):hover .md-icon.favorite-border .md-icon-hover-path { displ
 svg { display: block; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 body, .sidebar, .content, .nav-item, .theme-toggle, .eyebrow, .photo-card, .add-folder-card, .folder-card, .empty-icon { transition: color .35s var(--ease), background-color .35s var(--ease), border-color .35s var(--ease), box-shadow .35s var(--ease); }
 
-.auth-pending { width: 100%; height: 100dvh; background: var(--surface); }
+.auth-pending { display: grid; place-items: center; width: 100%; height: 100dvh; padding: 24px; color: var(--text-muted); background: var(--surface); }
 .auth-shell { display: grid; width: 100%; min-height: 100dvh; padding: 24px; overflow-y: auto; background: radial-gradient(circle at 20% 10%, color-mix(in srgb, var(--accent-soft) 74%, transparent), transparent 38%), var(--surface); place-items: center; }
 .auth-card { display: grid; width: min(440px, 100%); padding: 38px; background: color-mix(in srgb, var(--surface-raised) 94%, transparent); border: 1px solid var(--line); border-radius: 30px; box-shadow: var(--shadow); animation: rise-in .45s var(--ease) both; }
 .auth-logo { width: 76px; height: 76px; margin: 0 auto 24px; object-fit: contain; filter: drop-shadow(0 10px 12px color-mix(in srgb, #e94a5f 22%, transparent)); }

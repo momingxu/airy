@@ -7,7 +7,7 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      injectRegister: 'inline',
       includeAssets: ['apple-touch-icon.png', 'airy-logo.png'],
       manifest: {
         id: '/',
@@ -42,6 +42,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        inlineWorkboxRuntime: true,
         globPatterns: ['**/*.{js,css,html,woff2,png}'],
         cleanupOutdatedCaches: true,
         navigateFallback: '/index.html',
@@ -55,6 +56,7 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'airy-favorites-api-v1',
+              networkTimeoutSeconds: 5,
               cacheableResponse: { statuses: [200] },
               expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60, purgeOnQuotaError: true },
             },

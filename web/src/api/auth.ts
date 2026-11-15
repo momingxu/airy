@@ -26,13 +26,19 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export async function fetchAuthStatus(): Promise<AuthStatus> {
   let response: Response
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000)
   try {
-    response = await fetch('/api/auth/status', { headers: { Accept: 'application/json' }, cache: 'no-store' })
+    response = await fetch('/api/auth/status', {
+      headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal,
+    })
   } catch (error) {
     // Only network failure permits local browsing. A server rejection must win.
     const saved = readOfflineSession()
     if (saved) return { configured: true, authenticated: true, username: saved.username, offline: true }
     throw error
+  } finally {
+    clearTimeout(timeout)
   }
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) clearOfflineSession()

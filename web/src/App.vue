@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeStorage } from './utils/storage'
 import { isWheelZoomModifier, matchesWheelZoom, wheelZoomLabels, type WheelZoomModifier } from './utils/wheelZoom'
 import { clearFavoriteCache, favoritePhoto } from './utils/favoriteCache'
 import { clearOfflineSession } from './utils/offlineSession'
@@ -2157,7 +2158,7 @@ function selectThemeSeed(value: string) {
   if (!normalized) return
   themeSeedDraft.value = normalized
   themeSeed.value = normalized
-  localStorage.setItem(THEME_SEED_STORAGE_KEY, normalized)
+  safeStorage.setItem(THEME_SEED_STORAGE_KEY, normalized)
   applyMaterialTheme(normalized, theme.value)
 }
 
@@ -2343,14 +2344,14 @@ function captureSearchShortcut(event: KeyboardEvent) {
 
 function saveSearchShortcut() {
   searchShortcut.value = searchShortcutDraft.value || defaultSearchShortcut
-  localStorage.setItem(searchShortcutStorageKey, searchShortcut.value)
+  safeStorage.setItem(searchShortcutStorageKey, searchShortcut.value)
   shortcutMessage.value = `搜索快捷键已保存为 ${formatShortcutLabel(searchShortcut.value)}。`
 }
 
 function resetSearchShortcut() {
   searchShortcut.value = defaultSearchShortcut
   searchShortcutDraft.value = defaultSearchShortcut
-  localStorage.removeItem(searchShortcutStorageKey)
+  safeStorage.removeItem(searchShortcutStorageKey)
   shortcutMessage.value = '已恢复默认快捷键 Alt。'
 }
 
@@ -2399,11 +2400,11 @@ watch(offlineMode, (offline, previous) => {
   networkToastTimer = window.setTimeout(() => { networkToast.value = '' }, offline ? 5000 : 3000)
 })
 
-watch(wheelZoomModifier, value => localStorage.setItem('airy-wheel-zoom-modifier', value))
+watch(wheelZoomModifier, value => safeStorage.setItem('airy-wheel-zoom-modifier', value))
 
 watch(theme, (value) => {
   document.documentElement.dataset.theme = value
-  localStorage.setItem('airy-theme', value)
+  safeStorage.setItem('airy-theme', value)
   applyMaterialTheme(themeSeed.value, value)
 })
 
@@ -2435,13 +2436,13 @@ watch(seriesName, () => {
 })
 
 onMounted(async () => {
-  const savedWheelZoomModifier = localStorage.getItem('airy-wheel-zoom-modifier')
+  const savedWheelZoomModifier = safeStorage.getItem('airy-wheel-zoom-modifier')
   if (isWheelZoomModifier(savedWheelZoomModifier)) wheelZoomModifier.value = savedWheelZoomModifier
-  const savedThemeSeed = normalizeThemeSeed(localStorage.getItem(THEME_SEED_STORAGE_KEY)) ?? DEFAULT_THEME_SEED
+  const savedThemeSeed = normalizeThemeSeed(safeStorage.getItem(THEME_SEED_STORAGE_KEY)) ?? DEFAULT_THEME_SEED
   themeSeed.value = savedThemeSeed
   themeSeedDraft.value = savedThemeSeed
 
-  const savedTheme = localStorage.getItem('airy-theme')
+  const savedTheme = safeStorage.getItem('airy-theme')
   theme.value =
     savedTheme === 'dark' || savedTheme === 'light'
       ? savedTheme
@@ -2450,13 +2451,13 @@ onMounted(async () => {
         : 'light'
   applyMaterialTheme(themeSeed.value, theme.value)
 
-  const savedSearchShortcut = localStorage.getItem(searchShortcutStorageKey)
+  const savedSearchShortcut = safeStorage.getItem(searchShortcutStorageKey)
   if (savedSearchShortcut && savedSearchShortcut.length <= 64) {
     searchShortcut.value = savedSearchShortcut
     searchShortcutDraft.value = savedSearchShortcut
   }
 
-  localStorage.removeItem('airy-favorites')
+  safeStorage.removeItem('airy-favorites')
 
   document.addEventListener('keydown', handleKeydown)
   document.addEventListener('keyup', handleKeyup)
@@ -2561,7 +2562,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="authState === 'loading'" class="auth-pending" aria-busy="true"></div>
+  <div v-if="authState === 'loading'" class="auth-pending" aria-busy="true" role="status">
+    正在打开 Airy，检查连接与离线收藏…
+  </div>
 
   <div v-else-if="authState !== 'authenticated'" class="auth-shell">
     <main class="auth-card">
@@ -2742,7 +2745,7 @@ onBeforeUnmount(() => {
       <Transition name="view" mode="out-in">
         <div :key="activeView" class="view-stage">
       <section
-        v-if="(activeView === 'photos' && galleryLoading) || (activeView === 'favorites' && favoriteGalleryLoading)"
+        v-if="(activeView === 'photos' && galleryLoading) || (activeView === 'favorites' && favoriteGalleryLoading && !visibleGroups.length)"
         class="gallery-state"
         aria-live="polite"
       >
