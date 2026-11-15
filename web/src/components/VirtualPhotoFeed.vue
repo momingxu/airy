@@ -275,81 +275,20 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
               >
                 <FavoriteIcon :key="item.group.albumID" :active="item.group.favorite" />
               </button>
-              <p class="album-date-count">
-                <template v-if="item.group.publishedDate">
-                  <MdIcon name="calendar" />
-                  <time :datetime="item.group.publishedDate" aria-label="发布日期">{{ item.group.publishedDate.replace(/-/g, '.') }}</time>
-                  <span aria-hidden="true">·</span>
-                </template>
-                <span>{{ item.group.count }}P</span>
+              <p>
+                <template v-if="item.group.publishedDate"><time :datetime="item.group.publishedDate">发布于 {{ item.group.publishedDate }}</time> · </template>共 {{ item.group.count }} 项
               </p>
               <div v-if="item.group.people.length" class="album-related-people">
-                <template v-for="person in item.group.people" :key="person.id">
-                  <span
-                    v-if="props.editablePersonId === person.id"
-                    class="album-person-chip removable"
-                  >
-                    <button class="album-person-link" type="button" @click="emit('openPerson', person.id)">
-                      {{ person.name }}<template v-if="person.note"> · {{ person.note }}</template>
-                    </button>
-                    <button
-                      class="album-person-remove"
-                      type="button"
-                      :aria-label="`从 ${person.name} 中移除相册 ${item.group.name}`"
-                      :disabled="props.personAlbumSavingKeys.has(`${person.id}:${item.group.albumID}`)"
-                      @click="emit('removePersonAlbum', person.id, item.group)"
-                    >
-                      −
-                    </button>
-                  </span>
-                  <button
-                    v-else
-                    class="album-person-chip album-person-link"
-                    type="button"
-                    @click="emit('openPerson', person.id)"
-                  >
-                    {{ person.name }}<template v-if="person.note"> · {{ person.note }}</template>
-                  </button>
-                </template>
+                <button v-for="person in item.group.people" :key="person.id"
+                  class="album-person-chip album-person-link" type="button" @click="emit('openPerson', person.id)">
+                  {{ person.name }}<template v-if="person.note"> · {{ person.note }}</template>
+                </button>
               </div>
-              <button
-                v-else-if="item.group.canFavorite"
-                class="album-person-add"
-                type="button"
-                :aria-label="`为相册 ${item.group.name} 关联模特`"
-                title="关联模特"
-                @click="emit('addPersonAlbum', item.group)"
-              >
-                +
-              </button>
               <div v-if="item.group.series.length" class="album-related-people album-related-series">
-                <template v-for="seriesItem in item.group.series" :key="seriesItem.id">
-                  <span
-                    v-if="props.editableSeriesId === seriesItem.id"
-                    class="album-person-chip album-series-chip removable"
-                  >
-                    <button class="album-person-link" type="button" @click="emit('openSeries', seriesItem.id)">
-                      {{ seriesItem.name }}
-                    </button>
-                    <button
-                      class="album-person-remove"
-                      type="button"
-                      :aria-label="`从 ${seriesItem.name} 中移除相册 ${item.group.name}`"
-                      :disabled="props.seriesAlbumSavingKeys.has(`${seriesItem.id}:${item.group.albumID}`)"
-                      @click="emit('removeSeriesAlbum', seriesItem.id, item.group)"
-                    >
-                      −
-                    </button>
-                  </span>
-                  <button
-                    v-else
-                    class="album-person-chip album-series-chip album-person-link"
-                    type="button"
-                    @click="emit('openSeries', seriesItem.id)"
-                  >
-                    {{ seriesItem.name }}
-                  </button>
-                </template>
+                <button v-for="seriesItem in item.group.series" :key="seriesItem.id"
+                  class="album-person-chip album-series-chip album-person-link" type="button" @click="emit('openSeries', seriesItem.id)">
+                  {{ seriesItem.name }}
+                </button>
               </div>
             </div>
           </div>

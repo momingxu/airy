@@ -98,6 +98,10 @@ func TestAlbumCSVWorkflow(t *testing.T) {
 	}
 	// Global export includes both resource directories; import matches solely by ID.
 	globalExport := call("GET", "/api/albums.csv", "", "")
+	quotedHeader := "\ufeff\"" + strings.Join(albumCSVHeader, "\",\"") + "\"\r\n"
+	if !strings.HasPrefix(globalExport.Body.String(), quotedHeader) || !strings.Contains(globalExport.Body.String(), "\r\n\""+id(0)+"\",\"") {
+		t.Fatalf("global export fields are not fully quoted: %s", globalExport.Body.String())
+	}
 	globalRecords, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(globalExport.Body.String(), "\ufeff"))).ReadAll()
 	if globalExport.Code != 200 || err != nil || len(globalRecords) != 4 {
 		t.Fatalf("global export: %d %v %v", globalExport.Code, globalRecords, err)
@@ -132,7 +136,6 @@ func TestAlbumCSVWorkflow(t *testing.T) {
 		encode([]string{id(0), "first", ""}, []string{id(0), "duplicate", ""}),
 		encode([]string{id(2), "foreign", ""}),
 		encode([]string{"0", "zero", ""}),
-		encode([]string{id(0), " ", ""}),
 		encode([]string{id(0), strings.Repeat("中", 256), ""}),
 	} {
 		invalid := preview(bad)
@@ -167,5 +170,24 @@ func TestAlbumCSVWorkflow(t *testing.T) {
 	}
 	if rec := call("POST", base+"albums/csv-preview", strings.Repeat("x", albumCSVLimit+1), ""); rec.Code != 413 {
 		t.Fatal("oversize upload accepted")
+	}
+}
+
+func TestWriteQuotedCSVRecord(t *testing.T) {
+	fields := []string{"42", "标题,含逗号", "2026-05-22", "", "含\"引号\"\n第二行"}
+	var output bytes.Buffer
+	writeQuotedCSVRecord(&output, fields)
+	want := "\"42\",\"标题,含逗号\",\"2026-05-22\",\"\",\"含\"\"引号\"\"\n第二行\"\r\n"
+	if output.String() != want {
+		t.Fatalf("got %q want %q", output.String(), want)
+	}
+	rows, err := csv.NewReader(strings.NewReader(output.String())).ReadAll()
+	if err != nil || len(rows) != 1 || len(rows[0]) != len(fields) {
+		t.Fatalf("invalid CSV: %v %v", rows, err)
+	}
+	for i, value := range fields {
+		if rows[0][i] != value {
+			t.Fatalf("field %d: got %q want %q", i, rows[0][i], value)
+		}
 	}
 }

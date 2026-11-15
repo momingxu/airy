@@ -676,8 +676,9 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .entity-favorite-filter:hover, .entity-favorite-filter.active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .entity-favorite-filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (max-width: 600px) {
-  .people-list-toolbar { grid-template-columns: 1fr; gap: 10px; }
-  .entity-favorite-filter { justify-self: start; }
+  .people-list-toolbar { grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+  .people-list-toolbar .people-toolbar-actions { min-width: 0; }
+  .entity-favorite-filter { padding: 0 10px; gap: 5px; font-size: 12px; }
 }
 
 /* Empty library pages show one centered prompt without redundant headings/tools. */
@@ -731,8 +732,6 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
 .folder-scan-feedback > .folder-status { display: inline-block; }
 
 
-.album-date-count { display: inline-flex; align-items: center; gap: 6px; }
-.album-date-count > .md-icon { width: 15px; height: 15px; flex: 0 0 15px; }
 
 .resource-top-panels { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
 .resource-add-panel, .resource-tools-panel { min-width: 0; }

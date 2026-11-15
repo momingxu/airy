@@ -115,6 +115,31 @@ func TestAlbumCSVEntities(t *testing.T) {
 	if !p.Valid || p.Changes != 0 {
 		t.Fatalf("entity roundtrip: %+v", p)
 	}
+	// Global CSV blank cells preserve every field, including title and relationships.
+	directoryBase := base
+	base = "/api/"
+	for _, blank := range []string{"", "  "} {
+		body := encode([]string{fmt.Sprint(albums[0].ID), blank, blank, blank, blank})
+		p := preview(body)
+		if !p.Valid || p.Changes != 0 || p.Rows[0].Title != albums[0].AlbumName || p.Rows[0].Date != albums[0].PublishedDate {
+			t.Fatalf("blank global cells did not preserve data: %+v", p)
+		}
+		apply(body)
+	}
+	dateOnly := encode([]string{fmt.Sprint(albums[0].ID), "", "2020-01-18", "", ""})
+	p = preview(dateOnly)
+	if !p.Valid || p.Changes != 1 {
+		t.Fatalf("date-only global import: %+v", p)
+	}
+	apply(dateOnly)
+	var preserved database.Album
+	if err := db.First(&preserved, albums[0].ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if preserved.AlbumName != albums[0].AlbumName || preserved.PublishedDate != "2020-01-18" || preserved.SeriesID == nil || *preserved.SeriesID != series.ID || count(&database.PersonAlbum{}) != 3 {
+		t.Fatalf("date-only import changed blank fields: %+v", preserved)
+	}
+	base = directoryBase
 	// Blank fields keep links, while explicit clear removes them and refreshes covers.
 	p = preview(encode(row(0, "", "")))
 	if !p.Valid || p.Changes != 0 {

@@ -87,6 +87,19 @@ func spreadsheetTitle(title string) string {
 	return title
 }
 
+// writeQuotedCSVRecord quotes every field, including IDs, dates and empty cells.
+func writeQuotedCSVRecord(output *bytes.Buffer, fields []string) {
+	for i, field := range fields {
+		if i > 0 {
+			output.WriteByte(',')
+		}
+		output.WriteByte('"')
+		output.WriteString(strings.ReplaceAll(field, "\"", "\"\""))
+		output.WriteByte('"')
+	}
+	output.WriteString("\r\n")
+}
+
 func exportAlbumCSVHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		query := db.WithContext(c.Request.Context())
@@ -110,16 +123,9 @@ func exportAlbumCSVHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 		var output bytes.Buffer
 		output.WriteString("\xef\xbb\xbf")
-		writer := csv.NewWriter(&output)
-		writer.UseCRLF = true
-		_ = writer.Write(albumCSVHeader)
+		writeQuotedCSVRecord(&output, albumCSVHeader)
 		for _, album := range albums {
-			_ = writer.Write([]string{strconv.FormatUint(uint64(album.ID), 10), spreadsheetTitle(album.AlbumName), album.PublishedDate, spreadsheetTitle(entities.seriesName(album.SeriesID)), spreadsheetTitle(csvPeopleText(entities.personNames(entities.links[album.ID])))})
-		}
-		writer.Flush()
-		if writer.Error() != nil {
-			c.JSON(500, gin.H{"error": "生成 CSV 失败"})
-			return
+			writeQuotedCSVRecord(&output, []string{strconv.FormatUint(uint64(album.ID), 10), spreadsheetTitle(album.AlbumName), album.PublishedDate, spreadsheetTitle(entities.seriesName(album.SeriesID)), spreadsheetTitle(csvPeopleText(entities.personNames(entities.links[album.ID])))})
 		}
 		filename := "airy-albums.csv"
 		if id != 0 {
@@ -194,7 +200,7 @@ func previewAlbumCSV(db *gorm.DB, directoryID uint, data []byte) (albumCSVPrevie
 		album, exists := albums[row.ID]
 		row.OldTitle = album.AlbumName
 		row.OldDate = album.PublishedDate
-		if exists && row.Title == spreadsheetTitle(album.AlbumName) {
+		if exists && (strings.TrimSpace(row.Title) == "" || row.Title == spreadsheetTitle(album.AlbumName)) {
 			row.Title = album.AlbumName
 		}
 		if row.Date == "" {

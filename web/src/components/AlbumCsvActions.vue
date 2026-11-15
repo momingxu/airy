@@ -100,7 +100,7 @@ async function apply() {
           <div><h2>导入相册 CSV</h2><p>全部资源库 · 仅按相册 ID 匹配</p></div>
           <button type="button" :disabled="busy" aria-label="关闭 CSV 导入" @click="close"><MdIcon name="close" /></button>
         </header>
-        <p class="csv-help">先导出 CSV，再修改相册标题、发布日期、系列和模特。请保留表头与相册 ID；日期使用 YYYY-MM-DD，留空则保留原值。文件为 UTF-8 编码，最多 5 MB、20000 行。</p>
+        <p class="csv-help">先导出 CSV，再修改相册标题、发布日期、系列和模特。请保留表头与相册 ID；相册标题、发布日期、系列、模特均可留空，留空则不修改该项；日期使用 YYYY-MM-DD。文件为 UTF-8 编码，最多 5 MB、20000 行。</p>
         <p class="csv-help">系列填写一个名称；多个模特名称用分号分隔。名称不存在时将在应用修改时创建。同名模特无法唯一匹配时会报错。系列或模特留空保留原关联，填写名称替换关联，填写 [清空] 解除关联。旧版三列 CSV 仍可导入。</p>
         <label class="csv-file-label">选择修改后的 CSV
           <input type="file" accept=".csv,text/csv" :disabled="busy" @change="chooseFile" />
