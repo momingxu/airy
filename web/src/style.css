@@ -763,3 +763,5 @@ h1 { margin-bottom: 0; font-size: clamp(46px, 6vw, 76px); font-weight: 500; lett
     border-radius: 50%;
   }
 }
+
+.resource-action-buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }

@@ -4,6 +4,8 @@ import { clearFavoriteCache, favoritePhoto } from './utils/favoriteCache'
 import { clearOfflineSession } from './utils/offlineSession'
 import LightboxSlides from './components/LightboxSlides.vue'
 import FavoriteIcon from "./components/FavoriteIcon.vue"
+import ResourceActionDialog from "./components/ResourceActionDialog.vue"
+import FolderBrowser from "./components/FolderBrowser.vue"
 import AlbumCsvActions from "./components/AlbumCsvActions.vue"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MdIcon from './components/MdIcon.vue'
@@ -16,7 +18,6 @@ import {
 } from './api/auth'
 import {
   cancelScan,
-  createDirectory,
   deleteDirectory,
   fetchDirectories,
   fetchScanSchedule,
@@ -155,20 +156,15 @@ const favoriteSavingAlbumIDs = ref<Set<number>>(new Set())
 const favoriteSavingPhotoIDs = ref<Set<string>>(new Set())
 const directories = ref<ResourceDirectory[]>([])
 const directoriesLoading = ref(false)
-const directorySaving = ref(false)
-const directoryPath = ref('')
-const directoryAlbumDepth = ref(1)
 const directoryError = ref('')
 const activeScan = ref<ScanStatus | null>(null)
 const scanSchedule = ref<ScanSchedule>({ enabled: false, scan_time: '01:00', timezone: 'Asia/Shanghai' })
 const globalScanStarting = ref(false)
 const scanControlChanging = ref(false)
 const scanScheduleSaving = ref(false)
-const directoryAddMessage = ref('')
 const albumDatesUpdating = ref(false)
 const albumDatesMessage = ref('')
 const directorySettingsSaving = ref<Set<number>>(new Set())
-const albumDepthOptions = Array.from({ length: 10 }, (_, index) => index + 1)
 const people = ref<PersonItem[]>([])
 const selectedPersonID = ref<number | null>(null)
 const personGroups = ref<PhotoGroup[]>([])
@@ -583,25 +579,6 @@ async function loadDirectories(silent = false) {
     scheduleDirectoryRefresh(15000)
   } finally {
     directoriesLoading.value = false
-  }
-}
-
-async function addDirectory() {
-  directoryAddMessage.value = ''
-  const path = directoryPath.value.trim()
-  if (!path || directorySaving.value) return
-  directorySaving.value = true
-  directoryError.value = ''
-  try {
-    const result = await createDirectory(path, directoryAlbumDepth.value)
-    directoryAddMessage.value = `已添加 ${result.created} 个资源库${result.existing ? `，${result.existing} 个已存在` : ''}。`
-    directoryPath.value = ''
-    directoryAlbumDepth.value = 1
-    await loadDirectories(true)
-  } catch (error) {
-    directoryError.value = error instanceof Error ? error.message : '添加资源文件夹失败'
-  } finally {
-    directorySaving.value = false
   }
 }
 
@@ -2928,44 +2905,11 @@ onBeforeUnmount(() => {
       </section>
 
       <section v-else-if="activeView === 'folders'" class="resource-manager">
-        <div class="resource-top-panels">
-          <div class="resource-add-panel">
-            <form class="add-folder-card" @submit.prevent="addDirectory">
-              <span class="folder-illustration" aria-hidden="true">
-                <MdIcon name="createFolder" />
-              </span>
-              <div class="add-folder-copy">
-                <h2>添加资源文件夹</h2>
-                <p>填写服务器上的绝对路径，选择相册层级；相册的上一级目录将分别添加为资源库，以文件夹名命名。</p>
-              </div>
-              <div class="folder-input-row">
-                <input
-                  v-model="directoryPath"
-                  type="text"
-                  name="directory-path"
-                  placeholder="/mnt/photos/library"
-                  autocomplete="off"
-                  :disabled="directorySaving"
-                  aria-label="资源文件夹绝对路径"
-                />
-                <label class="album-depth-input">
-                  <span>相册深度</span>
-                  <select v-model.number="directoryAlbumDepth" :disabled="directorySaving" aria-label="相册目录深度">
-                    <option v-for="depth in albumDepthOptions" :key="depth" :value="depth">{{ depth }} 级</option>
-                  </select>
-                </label>
-                <button class="primary-action" type="submit" :disabled="!directoryPath.trim() || directorySaving">
-                  {{ directorySaving ? '正在添加…' : '添加文件夹' }}
-                </button>
-              </div>
-              <p class="folder-safety">例如选择第 2 级：/写真/系列A/相册 → 资源库“系列A”。添加后不会自动扫描，也不会修改或移动原始文件。</p>
-            </form>
-
-            <p v-if="directoryAddMessage" class="directory-dates-message" role="status">{{ directoryAddMessage }}</p>
-            <p v-if="directoryError" class="inline-error folder-error" role="alert">{{ directoryError }}</p>
-
-          </div>
-          <div class="resource-tools-panel">
+        <div class="resource-action-buttons">
+          <ResourceActionDialog title="添加资源文件夹" icon="createFolder" wide>
+            <FolderBrowser @added="loadDirectories(true)" />
+          </ResourceActionDialog>
+          <ResourceActionDialog title="相册 CSV" icon="folder">
             <div class="folder-manager-toolbar">
               <div class="global-scan-copy">
                 <b>全局相册 CSV</b>
@@ -2973,7 +2917,8 @@ onBeforeUnmount(() => {
               </div>
               <AlbumCsvActions @applied="loadDirectories(true)" />
             </div>
-
+          </ResourceActionDialog>
+          <ResourceActionDialog title="更新发布日期" icon="refresh">
             <div class="folder-manager-toolbar">
               <div class="global-scan-copy">
                 <b>全局相册发布日期</b>
@@ -2984,8 +2929,9 @@ onBeforeUnmount(() => {
                 {{ albumDatesUpdating ? '更新中…' : '更新发布日期' }}
               </button>
             </div>
-
-            <div v-if="directories.length" class="folder-manager-toolbar global-scan-toolbar">
+          </ResourceActionDialog>
+          <ResourceActionDialog title="全局扫描" icon="refresh">
+            <div class="folder-manager-toolbar global-scan-toolbar">
               <div class="global-scan-copy">
                 <b>全局图库扫描</b>
                 <span>每天夜间 01:00，只扫描未关闭监听和扫描的资源文件夹。</span>
@@ -3028,9 +2974,9 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </div>
-
-          </div>
+          </ResourceActionDialog>
         </div>
+        <p v-if="directoryError" class="inline-error folder-error" role="alert">{{ directoryError }}</p>
 
         <div v-if="directoriesLoading && !directories.length" class="folder-loading" aria-live="polite">
           <span class="loading-spinner small" aria-hidden="true"></span>

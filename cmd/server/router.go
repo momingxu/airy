@@ -39,6 +39,7 @@ func newRouter(db *gorm.DB, driver string, mediaScanner *scanner.Scanner, mediaS
 	protected.POST("/scan/cancel", cancelScanHandler(mediaScanner))
 	protected.GET("/scan/schedule", getScanScheduleHandler(db))
 	protected.PATCH("/scan/schedule", updateScanScheduleHandler(db, mediaScanner))
+	protected.GET("/directories/browse", browseDirectoriesHandler("/mnt"))
 	protected.GET("/directories", listDirectoriesHandler(db, mediaScanner))
 	protected.GET("/albums.csv", exportAlbumCSVHandler(db))
 	protected.POST("/albums/csv-preview", importAlbumCSVHandler(db, false))
