@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -23,8 +21,6 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/soheilhy/cmux"
 )
-
-const dockerMediaRoot = "/mnt"
 
 func main() {
 	if err := godotenv.Overload(); err != nil && !os.IsNotExist(err) {
@@ -52,30 +48,6 @@ func main() {
 
 	mediaScanner := scanner.New(db, cfg.Media.FFprobePath, cfg.Media.FFmpegPath)
 	mediaService := mediaservice.NewService(db)
-	mediaRoots, rootsErr := discoverDockerMediaRoots(cfg.DockerMode, dockerMediaRoot)
-	if rootsErr != nil {
-		slog.Warn("发现 Docker 默认媒体目录失败", "root", dockerMediaRoot, "error", rootsErr)
-	}
-	registeredRoots := 0
-	for _, mediaRoot := range mediaRoots {
-		resolvedRoot, resolveErr := scanner.ResolveRoot(mediaRoot)
-		if resolveErr != nil {
-			slog.Warn("媒体目录不可用", "root", mediaRoot, "error", resolveErr)
-			continue
-		}
-		directory := database.AssetDirectory{}
-		if err := db.Where("directory_path = ?", resolvedRoot).FirstOrCreate(&directory, database.AssetDirectory{
-			DirectoryName: filepath.Base(resolvedRoot),
-			DirectoryPath: resolvedRoot,
-		}).Error; err != nil {
-			slog.Warn("登记媒体目录失败", "root", resolvedRoot, "error", err)
-			continue
-		}
-		registeredRoots++
-	}
-	if cfg.DockerMode {
-		slog.Info("Docker 媒体目录发现完成", "mount_root", dockerMediaRoot, "registered", registeredRoots)
-	}
 
 	automationContext, stopAutomation := context.WithCancel(context.Background())
 	defer stopAutomation()
@@ -170,25 +142,6 @@ func main() {
 			connectionMux.Close()
 		}
 	}
-}
-
-func discoverDockerMediaRoots(dockerMode bool, mountRoot string) ([]string, error) {
-	if !dockerMode {
-		return nil, nil
-	}
-
-	entries, err := os.ReadDir(mountRoot)
-	if err != nil {
-		return nil, err
-	}
-	roots := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), ".") || !entry.IsDir() {
-			continue
-		}
-		roots = append(roots, filepath.Join(mountRoot, entry.Name()))
-	}
-	return roots, nil
 }
 
 func newHTTPSRedirectServer() *http.Server {
